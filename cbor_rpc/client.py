@@ -45,56 +45,78 @@ class RpcV1(RpcClient):
             return result
 
         async def on_data(data: List[Any]) -> None:
-            if not isinstance(data, list) or len(data) != 5:
-                print(f"RpcV1: Invalid message format: {data}")
-                return
+            try:
+                if not isinstance(data, list) or len(data) != 5:
+                    print(f"RpcV1: Invalid message format: {data}")
+                    return
 
-            version, direction, id_, method, params = data
-            if version != 1:
-                print(f"RpcV1: Unsupported version: {data}")
-                return
+                version, direction, id_, method, params = data
+                if version != 1:
+                    print(f"RpcV1: Unsupported version: {data}")
+                    return
 
-            if direction < 2:
-                try:
-                    # Call the method and get the result
-                    result = self.handle_method_call(method, params)
-                    # Resolve coroutines asynchronously
+                if direction < 2:  # Method call (0) or fire (1)
                     try:
-                        resolved_result = await resolve_result(result)
-                        if direction == 0:
-                            await self.pipe.write([1, 2, id_, True, resolved_result])
+                        # Call the method and get the result
+                        result = self.handle_method_call(method, params)
+                        
+                        # Handle the response asynchronously
+                        async def handle_response():
+                            try:
+                                resolved_result = await resolve_result(result)
+                                if direction == 0:  # Only respond to method calls, not fire calls
+                                    await self.pipe.write([1, 2, id_, True, resolved_result])
+                            except Exception as e:
+                                if direction == 0:
+                                    await self.pipe.write([1, 2, id_, False, str(e)])
+                                else:
+                                    print(f"Fired method error: {method}, params={params}, error={e}")
+                        
+                        # Create task to handle response
+                        asyncio.create_task(handle_response())
+                        
                     except Exception as e:
                         if direction == 0:
-                            await self.pipe.write([1, 2, id_, False, str(e)])
+                            asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
                         else:
                             print(f"Fired method error: {method}, params={params}, error={e}")
-                except Exception as e:
-                    if direction == 0:
-                        await self.pipe.write([1, 2, id_, False, str(e)])
+                            
+                elif direction == 2:  # Response
+                    promise = self._promises.pop(id_, None)
+                    if promise:
+                        if method is True:  # Success
+                            await promise.resolve(params)
+                        else:  # Error
+                            await promise.reject(params)
                     else:
-                        print(f"Fired method error: {method}, params={params}, error={e}")
-            elif direction == 2:
-                if promise := self._promises.pop(id_, None):
-                    if method is True:
-                        await promise.resolve(params)
-                    else:
-                        await promise.reject(params)
-            elif direction == 3:
-                await self._on_event(method, params)
+                        print(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}")
+                        
+                elif direction == 3:  # Event
+                    await self._on_event(method, params)
+                else:
+                    print(f"RpcV1: Invalid direction: {direction}")
+                    
+            except Exception as e:
+                print(f"Error processing RPC message: {e}")
 
         self.pipe.on("data", on_data)
 
     async def call_method(self, method: str, *args: Any) -> Any:
         counter = self._counter
         self._counter += 1
-        promise = DeferredPromise(self._timeout)
+        
+        def timeout_callback():
+            self._promises.pop(counter, None)
+        
+        promise = DeferredPromise(self._timeout, timeout_callback)
         self._promises[counter] = promise
-        await self.pipe.write([1, 0, counter, method, args])
+        await self.pipe.write([1, 0, counter, method, list(args)])
         return await promise.promise
 
     async def fire_method(self, method: str, *args: Any) -> None:
+        counter = self._counter
         self._counter += 1
-        await self.pipe.write([1, 1, self._counter - 1, method, args])
+        await self.pipe.write([1, 1, counter, method, list(args)])
 
     async def emit(self, topic: str, args: Any) -> None:
         await self.pipe.write([1, 3, 0, topic, args])
@@ -103,7 +125,8 @@ class RpcV1(RpcClient):
         self._timeout = milliseconds
 
     async def _on_event(self, method: str, message: Any) -> None:
-        if waiter := self._waiters.pop(method, None):
+        waiter = self._waiters.pop(method, None)
+        if waiter:
             await waiter.resolve(message)
         else:
             await self.on_event(method, message)
@@ -115,7 +138,15 @@ class RpcV1(RpcClient):
     async def wait_next_event(self, topic: str, timeout_ms: Optional[int] = None) -> Any:
         if topic in self._waiters:
             raise Exception("Already waiting for event")
-        waiter = DeferredPromise(timeout_ms or self._timeout)
+        
+        def timeout_callback():
+            self._waiters.pop(topic, None)
+            
+        waiter = DeferredPromise(
+            timeout_ms or self._timeout,
+            timeout_callback,
+            f"Timeout Waiting for Event on: {topic}"
+        )
         self._waiters[topic] = waiter
         return await waiter.promise
 
