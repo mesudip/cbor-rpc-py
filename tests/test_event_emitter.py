@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import Any, Callable
-from cbor_rpc.rpc import AbstractEmitter  # Adjust import based on your module structure
+from cbor_rpc import AbstractEmitter
 
 @pytest.mark.asyncio
 async def test_on_and_emit():

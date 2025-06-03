@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock
 
-from cbor_rpc.rpc import Pipe, RpcV1, DeferredPromise, SimplePipe  # Replace with actual module name
+from cbor_rpc import Pipe, RpcV1, DeferredPromise, SimplePipe
 
 # Example method implementations for testing
 async def sleep_method(seconds: float) -> None:
@@ -141,6 +141,9 @@ async def test_concurrent_method_calls(rpc):
 @pytest.mark.asyncio
 async def test_read_only_client(pipe):
     read_only = RpcV1.read_only_client(SimplePipe())
+    
+    # We need to directly call the handle_method_call method to test it
     with pytest.raises(Exception) as exc_info:
-        await read_only.call_method("add", 1, 2)
+        read_only.handle_method_call("add", [1, 2])
+    
     assert str(exc_info.value) == "Client Only Implementation"

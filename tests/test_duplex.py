@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from typing import Any, Generic, TypeVar
-from cbor_rpc.rpc import Duplex, SimplePipe, Pipe
+from cbor_rpc import Duplex, SimplePipe, Pipe
 
 T1 = TypeVar('T1')
 T2 = TypeVar('T2')

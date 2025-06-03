@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import Any
-from cbor_rpc.rpc import Pipe, AbstractEmitter
+from cbor_rpc import Pipe, AbstractEmitter
 
 @pytest.fixture
 def pipe():
