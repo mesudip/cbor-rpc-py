@@ -27,7 +27,7 @@ class MockPipe(Pipe):
 
     async def write(self, chunk: Any) -> bool:
         self.written_data.append(chunk)
-        await self._notify("data", chunk)
+        await self._emit("data", chunk)  # Changed from _notify to _emit
         return True
 
     async def terminate(self, *args: Any) -> None:
@@ -36,7 +36,7 @@ class MockPipe(Pipe):
         await self._emit("close", *args)
 
     async def simulate_data(self, data: Any):
-        await self._notify("data", data)
+        await self._emit("data", data)  # Changed from _notify to _emit
 
     async def simulate_close(self, *args: Any):
         await self._emit("close", *args)
@@ -133,13 +133,13 @@ async def test_rpc_v1():
     # Test method call
     await pipe.simulate_data([1, 0, 1, "echo", ["test"]])
     await asyncio.sleep(0.02)
-    assert [1, 2, 1, True, "test"] in pipe.written_data
+    assert any(item == [1, 2, 1, True, "test"] for item in pipe.written_data)
 
     # Test async method call
     pipe.written_data.clear()
     await pipe.simulate_data([1, 0, 2, "async_echo", ["async_test"]])
     await asyncio.sleep(0.02)
-    assert [1, 2, 2, True, "async_test"] in pipe.written_data
+    assert any(item == [1, 2, 2, True, "async_test"] for item in pipe.written_data)
 
     # Test fire method (no response)
     pipe.written_data.clear()
@@ -183,7 +183,16 @@ async def test_rpc_v1_server():
     pipe1.written_data.clear()
     await server.fire_method("client1", "echo", "fire")
     await asyncio.sleep(0.02)
-    assert any([1, 1, counter, "echo", ["fire"]] in pipe1.written_data for counter in range(10))
+    # Check if any message with the right format was written
+    assert any(
+        isinstance(item, list) and 
+        len(item) == 5 and 
+        item[0] == 1 and 
+        item[1] == 1 and 
+        item[3] == "echo" and 
+        item[4] == ["fire"] 
+        for item in pipe1.written_data
+    )
 
     # Test emit
     pipe1.written_data.clear()

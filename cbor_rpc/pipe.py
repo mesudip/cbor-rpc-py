@@ -19,10 +19,33 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
         pass
 
     def on(self, event: str, handler: Callable) -> None:
-        super().on(event, handler)
+        if event == "data":
+            async def data_handler(data: T2) -> None:
+                if inspect.iscoroutinefunction(handler):
+                    await handler(data)
+                else:
+                    handler(data)
+            super().on(event, data_handler)
+        elif event in ("error", "close"):
+            async def error_handler(err: Exception) -> None:
+                if inspect.iscoroutinefunction(handler):
+                    await handler(err)
+                else:
+                    handler(err)
+            super().on(event, error_handler)
+        else:
+            super().on(event, handler)
 
     def pipeline(self, event: str, handler: Callable) -> None:
-        super().pipeline(event, handler)
+        if event == "data":
+            async def async_pipeline(data: T2) -> None:
+                if inspect.iscoroutinefunction(handler):
+                    await handler(data)
+                else:
+                    handler(data)
+            super().pipeline(event, async_pipeline)
+        else:
+            super().pipeline(event, handler)
 
     @staticmethod
     def attach(source: 'Pipe[Any, Any]', destination: 'Pipe[Any, Any]') -> None:
@@ -47,7 +70,7 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
                     await writer(chunk)
                 else:
                     writer(chunk)
-                await self._notify("data", chunk)
+                await self._emit("data", chunk)  # Changed from _notify to _emit
                 return True
 
             async def terminate(self, *args: Any) -> None:
@@ -55,6 +78,7 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
                     await terminator(*args)
                 else:
                     terminator(*args)
+                await self._emit("close", *args)
         return ConcretePipe()
 
 
@@ -63,7 +87,7 @@ class SimplePipe(Pipe[T1, T1], Generic[T1]):
         super().__init__()
 
     async def write(self, chunk: T1) -> bool:
-        await self._notify("data", chunk)
+        await self._emit("data", chunk)  # Changed from _notify to _emit
         return True
 
     async def terminate(self, *args: Any) -> None:
@@ -77,18 +101,24 @@ class Duplex(Pipe[T1, T2], Generic[T1, T2]):
         self.writer: Pipe[Any, T2] = SimplePipe()
         
         # Set up error propagation
-        self.reader.on("error", lambda err: self._emit("error", err))
-        self.writer.on("error", lambda err: self._emit("error", err))
+        async def forward_error(err):
+            await self._emit("error", err)
+            
+        self.reader.on("error", forward_error)
+        self.writer.on("error", forward_error)
         
         # Forward data events from reader to this pipe
         async def forward_data(chunk):
-            await self._notify("data", chunk)
+            await self._emit("data", chunk)
         self.reader.on("data", forward_data)
 
     async def write(self, chunk: Any) -> bool:
-        await self.writer.write(chunk)
-        return True
+        result = await self.writer.write(chunk)
+        return result
 
     async def terminate(self, *args: Any) -> None:
-        await asyncio.gather(self.reader.terminate(*args), self.writer.terminate(*args))
+        await asyncio.gather(
+            self.reader.terminate(*args), 
+            self.writer.terminate(*args)
+        )
         await self._emit("close", *args)

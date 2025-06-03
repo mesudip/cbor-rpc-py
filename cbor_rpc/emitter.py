@@ -23,18 +23,26 @@ class AbstractEmitter(ABC):
                     await sub(*args)
                 else:
                     sub(*args)
-            except Exception:
-                pass
+            except Exception as e:
+                # We should log the exception but not propagate it
+                print(f"Error in event handler: {e}")
 
     async def _notify(self, event_type: str, *args: Any) -> None:
         tasks = []
         for pipeline in self._pipelines.get(event_type, []):
             if inspect.iscoroutinefunction(pipeline):
-                tasks.append(pipeline(*args))
+                task = asyncio.create_task(pipeline(*args))
+                tasks.append(task)
             else:
-                tasks.append(asyncio.to_thread(pipeline, *args))
+                try:
+                    pipeline(*args)
+                except Exception as e:
+                    # We should log the exception but not propagate it
+                    print(f"Error in pipeline: {e}")
+        
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
         await self._emit(event_type, *args)
 
     def on(self, event: str, handler: Callable) -> None:

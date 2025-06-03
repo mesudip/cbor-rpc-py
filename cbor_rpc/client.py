@@ -44,7 +44,7 @@ class RpcV1(RpcClient):
                 result = await result
             return result
 
-        def on_data(data: List[Any]) -> None:
+        async def on_data(data: List[Any]) -> None:
             if not isinstance(data, list) or len(data) != 5:
                 print(f"RpcV1: Invalid message format: {data}")
                 return
@@ -59,30 +59,28 @@ class RpcV1(RpcClient):
                     # Call the method and get the result
                     result = self.handle_method_call(method, params)
                     # Resolve coroutines asynchronously
-                    async def send_response():
-                        try:
-                            resolved_result = await resolve_result(result)
-                            if direction == 0:
-                                await self.pipe.write([1, 2, id_, True, resolved_result])
-                        except Exception as e:
-                            if direction == 0:
-                                await self.pipe.write([1, 2, id_, False, str(e)])
-                            else:
-                                print(f"Fired method error: {method}, params={params}, error={e}")
-                    asyncio.create_task(send_response())
+                    try:
+                        resolved_result = await resolve_result(result)
+                        if direction == 0:
+                            await self.pipe.write([1, 2, id_, True, resolved_result])
+                    except Exception as e:
+                        if direction == 0:
+                            await self.pipe.write([1, 2, id_, False, str(e)])
+                        else:
+                            print(f"Fired method error: {method}, params={params}, error={e}")
                 except Exception as e:
                     if direction == 0:
-                        asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
+                        await self.pipe.write([1, 2, id_, False, str(e)])
                     else:
                         print(f"Fired method error: {method}, params={params}, error={e}")
             elif direction == 2:
                 if promise := self._promises.pop(id_, None):
                     if method is True:
-                        asyncio.create_task(promise.resolve(params))
+                        await promise.resolve(params)
                     else:
-                        asyncio.create_task(promise.reject(params))
+                        await promise.reject(params)
             elif direction == 3:
-                asyncio.create_task(self._on_event(method, params))
+                await self._on_event(method, params)
 
         self.pipe.on("data", on_data)
 
