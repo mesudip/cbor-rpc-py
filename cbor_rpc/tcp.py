@@ -254,6 +254,7 @@ class TcpServer:
     def __init__(self, server: asyncio.Server):
         self._server = server
         self._connections: set[TcpDuplex] = set()
+        self._connection_handlers = []
     
     @classmethod
     async def create(cls, host: str = '0.0.0.0', port: int = 0, 
@@ -271,6 +272,7 @@ class TcpServer:
         """
         tcp_server = cls.__new__(cls)
         tcp_server._connections = set()
+        tcp_server._connection_handlers = []
         
         async def client_connected_cb(reader: asyncio.StreamReader, 
                                     writer: asyncio.StreamWriter) -> None:
@@ -283,7 +285,16 @@ class TcpServer:
             tcp_duplex.on("close", cleanup)
             
             await tcp_duplex._setup_connection()
-            await tcp_server._emit_connection(tcp_duplex)
+            
+            # Call all connection handlers
+            for handler in tcp_server._connection_handlers:
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(tcp_duplex)
+                    else:
+                        handler(tcp_duplex)
+                except Exception as e:
+                    print(f"Error in connection handler: {e}")
         
         server = await asyncio.start_server(
             client_connected_cb, host, port, backlog=backlog
@@ -292,10 +303,6 @@ class TcpServer:
         tcp_server._server = server
         return tcp_server
     
-    async def _emit_connection(self, tcp_duplex: TcpDuplex) -> None:
-        """Emit a connection event. Override this method to handle new connections."""
-        pass
-    
     def on_connection(self, handler) -> None:
         """
         Set a handler for new connections.
@@ -303,16 +310,7 @@ class TcpServer:
         Args:
             handler: A function that takes a TcpDuplex as argument
         """
-        original_emit = self._emit_connection
-        
-        async def new_emit(tcp_duplex: TcpDuplex) -> None:
-            await original_emit(tcp_duplex)
-            if asyncio.iscoroutinefunction(handler):
-                await handler(tcp_duplex)
-            else:
-                handler(tcp_duplex)
-        
-        self._emit_connection = new_emit
+        self._connection_handlers.append(handler)
     
     def get_address(self) -> Tuple[str, int]:
         """Get the server's listening address and port."""
