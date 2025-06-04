@@ -1,12 +1,14 @@
 """
 Generic parameterized tests for RPC functionality that can run over any backend.
-This test suite is designed to be extensible for different server types and configurations.
+This test suite uses consistent handlers across all backend types and tests
+comprehensive scenarios including different return types and error conditions.
 """
 
 import pytest
 import asyncio
 import uuid
 import json
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, AsyncGenerator
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -59,97 +61,170 @@ class MockPipe(Pipe[Any, Any]):
             await self.connected_pipe._emit("close", *args)
 
 
-# ===== Base Test RPC Server Implementation =====
+# ===== Unified RPC Method Handlers =====
 
-class BaseTestRpcServer(RpcV1Server):
-    """Base test RPC server implementation with common functionality."""
+class UnifiedRpcHandlers:
+    """Unified RPC method handlers used across all backend types."""
     
     def __init__(self):
-        super().__init__()
-        self._tcp_server = None
-        self._method_handlers = {}
-        self._event_validators = {}
-        self._call_log = []
+        self.call_log = []
+        self.sleep_calls = []
+        self.error_calls = []
     
-    async def handle_method_call(self, connection_id: str, method: str, args: List[Any]) -> Any:
-        """Handle RPC method calls."""
-        # Log the call for testing purposes
-        self._call_log.append({
+    def log_call(self, connection_id: str, method: str, args: List[Any]):
+        """Log method calls for testing purposes."""
+        self.call_log.append({
             "connection_id": connection_id,
             "method": method,
             "args": args,
-            "timestamp": asyncio.get_event_loop().time()
+            "timestamp": time.time()
         })
-        
-        # Check for custom handlers first
-        if method in self._method_handlers:
-            handler = self._method_handlers[method]
-            if asyncio.iscoroutinefunction(handler):
-                return await handler(connection_id, *args)
-            else:
-                return handler(connection_id, *args)
-        
-        # Default handlers for testing
-        return await self._handle_default_method(connection_id, method, args)
     
-    async def _handle_default_method(self, connection_id: str, method: str, args: List[Any]) -> Any:
-        """Handle default test methods."""
-        if method == "echo":
-            return args[0] if args else None
-        elif method == "add":
+    async def handle_method_call(self, connection_id: str, method: str, args: List[Any]) -> Any:
+        """Unified method handler for all backend types."""
+        self.log_call(connection_id, method, args)
+        
+        # Basic arithmetic
+        if method == "add":
+            if len(args) < 2:
+                raise Exception("add method requires at least 2 parameters")
             return sum(args)
+        
         elif method == "multiply":
+            if len(args) < 2:
+                raise Exception("multiply method requires at least 2 parameters")
             result = 1
             for arg in args:
                 result *= arg
             return result
+        
+        # Echo methods for different return types
+        elif method == "echo":
+            return args[0] if args else None
+        
+        elif method == "echo_int":
+            return int(args[0]) if args else 0
+        
+        elif method == "echo_string":
+            return str(args[0]) if args else ""
+        
+        elif method == "echo_boolean":
+            return bool(args[0]) if args else False
+        
+        elif method == "echo_float":
+            return float(args[0]) if args else 0.0
+        
+        elif method == "echo_bytes":
+            if args and isinstance(args[0], str):
+                return args[0].encode('utf-8')
+            elif args and isinstance(args[0], bytes):
+                return args[0]
+            else:
+                return b""
+        
+        elif method == "echo_array":
+            return list(args) if args else []
+        
+        elif method == "echo_map":
+            if args and isinstance(args[0], dict):
+                return args[0]
+            else:
+                return {"echoed": args}
+        
+        # Async operations
+        elif method == "sleep":
+            if not args:
+                raise Exception("sleep method requires duration parameter")
+            duration = float(args[0])
+            self.sleep_calls.append({"duration": duration, "connection_id": connection_id})
+            await asyncio.sleep(duration)
+            return f"Slept for {duration} seconds"
+        
+        # Error handling
+        elif method == "throw_error":
+            error_message = args[0] if args else "Test error"
+            self.error_calls.append({"message": error_message, "connection_id": connection_id})
+            raise Exception(error_message)
+        
+        # Utility methods
         elif method == "get_connection_id":
             return connection_id
+        
         elif method == "get_server_info":
             return {
-                "server_type": self.__class__.__name__,
-                "connections": len(self.active_connections),
-                "call_count": len(self._call_log)
+                "server_type": "UnifiedTestServer",
+                "connections": 1,  # Will be updated by server
+                "call_count": len(self.call_log),
+                "backend_type": "unified"
             }
-        elif method == "sleep":
-            await asyncio.sleep(args[0])
-            return f"Slept for {args[0]} seconds"
-        elif method == "error":
-            raise Exception(args[0] if args else "Test error")
+        
         elif method == "get_call_log":
-            return self._call_log.copy()
+            return self.call_log.copy()
+        
+        elif method == "clear_logs":
+            self.call_log.clear()
+            self.sleep_calls.clear()
+            self.error_calls.clear()
+            return "Logs cleared"
+        
+        # Test missing parameters
+        elif method == "require_params":
+            if len(args) < 3:
+                raise Exception(f"require_params needs 3 parameters, got {len(args)}")
+            return {"param1": args[0], "param2": args[1], "param3": args[2]}
+        
+        # Complex return types
+        elif method == "get_complex_data":
+            return {
+                "string": "Hello World",
+                "integer": 42,
+                "float": 3.14159,
+                "boolean": True,
+                "null_value": None,
+                "array": [1, 2, 3, "mixed", True],
+                "nested_object": {
+                    "inner_string": "nested",
+                    "inner_array": [{"deep": "value"}]
+                },
+                "bytes_data": "binary_data".encode('utf-8') if method != "get_complex_data" else "binary_data"
+            }
+        
         else:
             raise Exception(f"Unknown method: {method}")
+
+
+# ===== Base Test RPC Server Implementation =====
+
+class UnifiedTestRpcServer(RpcV1Server):
+    """Unified test RPC server that uses consistent handlers across all backends."""
+    
+    def __init__(self):
+        super().__init__()
+        self._tcp_server = None
+        self.handlers = UnifiedRpcHandlers()
+    
+    async def handle_method_call(self, connection_id: str, method: str, args: List[Any]) -> Any:
+        """Handle RPC method calls using unified handlers."""
+        result = await self.handlers.handle_method_call(connection_id, method, args)
+        
+        # Update connection count in server info
+        if method == "get_server_info" and isinstance(result, dict):
+            result["connections"] = len(self.active_connections)
+        
+        return result
     
     async def validate_event_broadcast(self, connection_id: str, topic: str, message: Any) -> bool:
         """Validate whether an event should be broadcasted."""
-        if topic in self._event_validators:
-            validator = self._event_validators[topic]
-            if asyncio.iscoroutinefunction(validator):
-                return await validator(connection_id, message)
-            else:
-                return validator(connection_id, message)
-        
-        # Default validators
+        # Block specific test topics
         if topic == "blocked_topic":
+            return False
+        if topic == "invalid_topic":
             return False
         return True
     
-    def register_method_handler(self, method: str, handler: Callable):
-        """Register a custom method handler."""
-        self._method_handlers[method] = handler
-    
-    def register_event_validator(self, topic: str, validator: Callable):
-        """Register a custom event validator."""
-        self._event_validators[topic] = validator
-    
-    def get_call_log(self) -> List[Dict[str, Any]]:
-        """Get the call log for testing purposes."""
-        return self._call_log.copy()
-    
-    def clear_call_log(self):
-        """Clear the call log."""
-        self._call_log.clear()
+    def get_handlers(self) -> UnifiedRpcHandlers:
+        """Get the unified handlers for testing purposes."""
+        return self.handlers
     
     async def cleanup(self):
         """Clean up resources."""
@@ -162,39 +237,6 @@ class BaseTestRpcServer(RpcV1Server):
             await self._tcp_server.close()
 
 
-class SimpleTestRpcServer(BaseTestRpcServer):
-    """Simple test RPC server without any transformations."""
-    pass
-
-
-class JsonTestRpcServer(BaseTestRpcServer):
-    """Test RPC server that works with JSON-transformed data."""
-    
-    async def _handle_default_method(self, connection_id: str, method: str, args: List[Any]) -> Any:
-        """Handle default test methods with JSON-specific responses."""
-        if method == "json_echo":
-            return {
-                "echoed": args[0] if args else None,
-                "type": "json_response",
-                "timestamp": "2024-01-01T00:00:00Z"
-            }
-        elif method == "process_json_data":
-            data = args[0] if args else {}
-            return {
-                "processed": True,
-                "input_keys": list(data.keys()) if isinstance(data, dict) else [],
-                "input_type": type(data).__name__,
-                "server_type": "JsonTestRpcServer"
-            }
-        else:
-            # Call parent method for standard functionality
-            result = await super()._handle_default_method(connection_id, method, args)
-            # Wrap simple responses in JSON structure for consistency
-            if isinstance(result, (str, int, float, bool)) or result is None:
-                return {"value": result, "type": "json_wrapped"}
-            return result
-
-
 # ===== Backend Configuration Classes =====
 
 @dataclass
@@ -202,30 +244,32 @@ class RpcBackendConfig(ABC):
     """Base class for RPC backend configurations."""
     name: str
     description: str
+    supports_bytes: bool = True  # Whether backend supports bytes data
     
     @abstractmethod
-    async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
+    async def create_server_client_pair(self) -> Tuple[UnifiedTestRpcServer, RpcV1]:
         """Create a server and client pair for testing."""
         pass
     
     @abstractmethod
-    async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
+    async def cleanup_backend(self, server: UnifiedTestRpcServer, client: RpcV1):
         """Clean up backend-specific resources."""
         pass
 
 
 class InMemorySimpleBackend(RpcBackendConfig):
-    """In-memory RPC backend using MockPipe with simple server."""
+    """In-memory RPC backend using MockPipe with unified server."""
     
     def __init__(self):
         super().__init__(
             name="in-memory-simple",
-            description="In-memory communication with simple RPC server"
+            description="In-memory communication with unified RPC server",
+            supports_bytes=True
         )
     
-    async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
+    async def create_server_client_pair(self) -> Tuple[UnifiedTestRpcServer, RpcV1]:
         # Create server
-        server = SimpleTestRpcServer()
+        server = UnifiedTestRpcServer()
         
         # Create mock pipes for bidirectional communication
         server_pipe = MockPipe()
@@ -240,12 +284,12 @@ class InMemorySimpleBackend(RpcBackendConfig):
         # Add connection to server
         await server.add_connection(client_id, server_pipe)
         
-        # Create client
+        # Create client with unified handlers
         def client_method_handler(method: str, args: List[Any]) -> Any:
-            return {"client_response": f"Handled {method} with {len(args)} args"}
+            return {"client_response": f"Client handled {method}", "args_count": len(args)}
         
         async def client_event_handler(topic: str, message: Any) -> None:
-            pass  # Client event handling can be customized per test
+            pass  # Client event handling
         
         client = RpcV1.make_rpc_v1(
             client_pipe,
@@ -256,7 +300,7 @@ class InMemorySimpleBackend(RpcBackendConfig):
         
         return server, client
     
-    async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
+    async def cleanup_backend(self, server: UnifiedTestRpcServer, client: RpcV1):
         """Clean up in-memory backend."""
         await server.cleanup()
 
@@ -267,12 +311,13 @@ class InMemoryJsonBackend(RpcBackendConfig):
     def __init__(self):
         super().__init__(
             name="in-memory-json",
-            description="In-memory communication with JSON transformation"
+            description="In-memory communication with JSON transformation",
+            supports_bytes=False  # JSON doesn't support raw bytes
         )
     
-    async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
+    async def create_server_client_pair(self) -> Tuple[UnifiedTestRpcServer, RpcV1]:
         # Create server
-        server = JsonTestRpcServer()
+        server = UnifiedTestRpcServer()
         
         # Create mock pipes for bidirectional communication
         raw_server_pipe = MockPipe()
@@ -291,16 +336,16 @@ class InMemoryJsonBackend(RpcBackendConfig):
         # Add connection to server
         await server.add_connection(client_id, server_pipe)
         
-        # Create client
+        # Create client with unified handlers
         def client_method_handler(method: str, args: List[Any]) -> Any:
             return {
-                "client_response": f"JSON handled {method}",
+                "client_response": f"JSON client handled {method}",
                 "args_count": len(args),
-                "client_type": "json"
+                "encoding": "json"
             }
         
         async def client_event_handler(topic: str, message: Any) -> None:
-            pass  # Client event handling can be customized per test
+            pass  # Client event handling
         
         client = RpcV1.make_rpc_v1(
             client_pipe,
@@ -311,23 +356,24 @@ class InMemoryJsonBackend(RpcBackendConfig):
         
         return server, client
     
-    async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
+    async def cleanup_backend(self, server: UnifiedTestRpcServer, client: RpcV1):
         """Clean up JSON backend."""
         await server.cleanup()
 
 
 class TcpSimpleBackend(RpcBackendConfig):
-    """TCP-based RPC backend using TcpPipe with simple server."""
+    """TCP-based RPC backend using TcpPipe with unified server."""
     
     def __init__(self):
         super().__init__(
             name="tcp-simple",
-            description="TCP communication with simple RPC server"
+            description="TCP communication with unified RPC server",
+            supports_bytes=True
         )
     
-    async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
+    async def create_server_client_pair(self) -> Tuple[UnifiedTestRpcServer, RpcV1]:
         # Create server
-        server = SimpleTestRpcServer()
+        server = UnifiedTestRpcServer()
         
         # Create TCP server
         tcp_server = await TcpServer.create('127.0.0.1', 0)
@@ -349,12 +395,12 @@ class TcpSimpleBackend(RpcBackendConfig):
         # Wait for server to register the connection
         await client_ready.wait()
         
-        # Create client
+        # Create client with unified handlers
         def client_method_handler(method: str, args: List[Any]) -> Any:
-            return f"TCP client handled {method}"
+            return {"client_response": f"TCP client handled {method}", "transport": "tcp"}
         
         async def client_event_handler(topic: str, message: Any) -> None:
-            pass  # Client event handling can be customized per test
+            pass  # Client event handling
         
         client = RpcV1.make_rpc_v1(
             client_pipe,
@@ -368,7 +414,7 @@ class TcpSimpleBackend(RpcBackendConfig):
         
         return server, client
     
-    async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
+    async def cleanup_backend(self, server: UnifiedTestRpcServer, client: RpcV1):
         """Clean up TCP backend."""
         await server.cleanup()
 
@@ -379,12 +425,13 @@ class TcpJsonBackend(RpcBackendConfig):
     def __init__(self):
         super().__init__(
             name="tcp-json",
-            description="TCP communication with JSON transformation"
+            description="TCP communication with JSON transformation",
+            supports_bytes=False  # JSON doesn't support raw bytes
         )
     
-    async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
+    async def create_server_client_pair(self) -> Tuple[UnifiedTestRpcServer, RpcV1]:
         # Create server
-        server = JsonTestRpcServer()
+        server = UnifiedTestRpcServer()
         
         # Create TCP server
         tcp_server = await TcpServer.create('127.0.0.1', 0)
@@ -409,16 +456,16 @@ class TcpJsonBackend(RpcBackendConfig):
         # Wait for server to register the connection
         await client_ready.wait()
         
-        # Create client
+        # Create client with unified handlers
         def client_method_handler(method: str, args: List[Any]) -> Any:
             return {
-                "client_response": f"TCP+JSON handled {method}",
+                "client_response": f"TCP+JSON client handled {method}",
                 "transport": "tcp",
                 "encoding": "json"
             }
         
         async def client_event_handler(topic: str, message: Any) -> None:
-            pass  # Client event handling can be customized per test
+            pass  # Client event handling
         
         client = RpcV1.make_rpc_v1(
             client_pipe,
@@ -432,7 +479,7 @@ class TcpJsonBackend(RpcBackendConfig):
         
         return server, client
     
-    async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
+    async def cleanup_backend(self, server: UnifiedTestRpcServer, client: RpcV1):
         """Clean up TCP+JSON backend."""
         await server.cleanup()
 
@@ -447,53 +494,41 @@ ALL_BACKENDS = [
     TcpJsonBackend(),
 ]
 
-# Subset for faster testing (can be used for quick tests)
+# Subset for faster testing
 FAST_BACKENDS = [
     InMemorySimpleBackend(),
     InMemoryJsonBackend(),
 ]
 
-# JSON-specific backends for JSON transformation tests
-JSON_BACKENDS = [
-    InMemoryJsonBackend(),
-    TcpJsonBackend(),
-]
+# Backends that support bytes
+BYTES_BACKENDS = [backend for backend in ALL_BACKENDS if backend.supports_bytes]
 
 
 @pytest.fixture(params=ALL_BACKENDS)
-async def rpc_backend(request) -> AsyncGenerator[Tuple[BaseTestRpcServer, RpcV1, RpcBackendConfig], None]:
-    """
-    Parameterized fixture that provides different RPC backend implementations.
-    
-    Returns a tuple of (server, client, backend_config) for each backend type.
-    """
+async def rpc_backend(request) -> AsyncGenerator[Tuple[UnifiedTestRpcServer, RpcV1, RpcBackendConfig], None]:
+    """Parameterized fixture that provides different RPC backend implementations."""
     backend: RpcBackendConfig = request.param
     
-    # Print which backend is being tested
     print(f"\n🧪 Testing with {backend.name}: {backend.description}")
     
-    # Create server and client
     server, client = await backend.create_server_client_pair()
-    
-    # Give some time for connections to be established
     await asyncio.sleep(0.1)
     
     try:
         yield server, client, backend
     finally:
-        # Clean up
         await backend.cleanup_backend(server, client)
 
 
 @pytest.fixture(params=FAST_BACKENDS)
-async def fast_rpc_backend(request) -> AsyncGenerator[Tuple[BaseTestRpcServer, RpcV1, RpcBackendConfig], None]:
+async def fast_rpc_backend(request) -> AsyncGenerator[Tuple[UnifiedTestRpcServer, RpcV1, RpcBackendConfig], None]:
     """Fast backend fixture for quick tests."""
     backend: RpcBackendConfig = request.param
     
     print(f"\n⚡ Fast testing with {backend.name}: {backend.description}")
     
     server, client = await backend.create_server_client_pair()
-    await asyncio.sleep(0.05)  # Shorter wait for fast tests
+    await asyncio.sleep(0.05)
     
     try:
         yield server, client, backend
@@ -501,12 +536,12 @@ async def fast_rpc_backend(request) -> AsyncGenerator[Tuple[BaseTestRpcServer, R
         await backend.cleanup_backend(server, client)
 
 
-@pytest.fixture(params=JSON_BACKENDS)
-async def json_rpc_backend(request) -> AsyncGenerator[Tuple[BaseTestRpcServer, RpcV1, RpcBackendConfig], None]:
-    """JSON-specific backend fixture."""
+@pytest.fixture(params=BYTES_BACKENDS)
+async def bytes_rpc_backend(request) -> AsyncGenerator[Tuple[UnifiedTestRpcServer, RpcV1, RpcBackendConfig], None]:
+    """Backend fixture for testing bytes support."""
     backend: RpcBackendConfig = request.param
     
-    print(f"\n📄 JSON testing with {backend.name}: {backend.description}")
+    print(f"\n📦 Bytes testing with {backend.name}: {backend.description}")
     
     server, client = await backend.create_server_client_pair()
     await asyncio.sleep(0.1)
@@ -517,33 +552,12 @@ async def json_rpc_backend(request) -> AsyncGenerator[Tuple[BaseTestRpcServer, R
         await backend.cleanup_backend(server, client)
 
 
-# ===== Generic RPC Tests =====
+# ===== Comprehensive RPC Tests =====
 
 @pytest.mark.asyncio
-async def test_rpc_echo_all_backends(rpc_backend):
-    """Test basic echo functionality across all backends."""
+async def test_arithmetic_operations(rpc_backend):
+    """Test arithmetic operations: add and multiply."""
     server, client, backend = rpc_backend
-    
-    # Test with different data types
-    test_values = [
-        "hello world",
-        123,
-        3.14,
-        True,
-        None,
-        [1, 2, 3],
-        {"key": "value"}
-    ]
-    
-    for value in test_values:
-        result = await client.call_method("echo", value)
-        assert result == value, f"Echo failed for {value} on {backend.name}"
-
-
-@pytest.mark.asyncio
-async def test_rpc_math_operations(fast_rpc_backend):
-    """Test mathematical operations across fast backends."""
-    server, client, backend = fast_rpc_backend
     
     # Test addition
     result = await client.call_method("add", 1, 2, 3, 4, 5)
@@ -552,249 +566,318 @@ async def test_rpc_math_operations(fast_rpc_backend):
     # Test multiplication
     result = await client.call_method("multiply", 2, 3, 4)
     assert result == 24, f"Multiplication failed on {backend.name}"
+    
+    # Test with negative numbers
+    result = await client.call_method("add", -5, 10, -3)
+    assert result == 2, f"Addition with negatives failed on {backend.name}"
 
 
 @pytest.mark.asyncio
-async def test_rpc_connection_management(rpc_backend):
-    """Test connection ID management and server info."""
+async def test_echo_return_types(rpc_backend):
+    """Test echo methods with different return types."""
     server, client, backend = rpc_backend
     
-    # Get connection ID from server
-    conn_id = await client.call_method("get_connection_id")
-    assert conn_id == client.get_id(), f"Connection ID mismatch on {backend.name}"
+    # Test basic echo
+    result = await client.call_method("echo", "hello world")
+    assert result == "hello world", f"Basic echo failed on {backend.name}"
     
-    # Verify the connection is active on the server
-    assert server.is_active(conn_id), f"Connection not active on {backend.name}"
+    # Test integer echo
+    result = await client.call_method("echo_int", "42")
+    assert result == 42, f"Integer echo failed on {backend.name}"
+    assert isinstance(result, int), f"Integer echo type wrong on {backend.name}"
     
-    # Get server info
-    server_info = await client.call_method("get_server_info")
-    assert isinstance(server_info, dict), f"Server info not dict on {backend.name}"
-    assert server_info["connections"] >= 1, f"Connection count wrong on {backend.name}"
+    # Test string echo
+    result = await client.call_method("echo_string", 123)
+    assert result == "123", f"String echo failed on {backend.name}"
+    assert isinstance(result, str), f"String echo type wrong on {backend.name}"
+    
+    # Test boolean echo
+    result = await client.call_method("echo_boolean", "true")
+    assert result is True, f"Boolean echo failed on {backend.name}"
+    assert isinstance(result, bool), f"Boolean echo type wrong on {backend.name}"
+    
+    result = await client.call_method("echo_boolean", "")
+    assert result is False, f"Boolean echo (false) failed on {backend.name}"
+    
+    # Test float echo
+    result = await client.call_method("echo_float", "3.14159")
+    assert abs(result - 3.14159) < 0.00001, f"Float echo failed on {backend.name}"
+    assert isinstance(result, float), f"Float echo type wrong on {backend.name}"
+    
+    # Test array echo
+    result = await client.call_method("echo_array", "a", "b", "c")
+    assert result == ["a", "b", "c"], f"Array echo failed on {backend.name}"
+    assert isinstance(result, list), f"Array echo type wrong on {backend.name}"
+    
+    # Test map echo
+    test_map = {"key1": "value1", "key2": 42}
+    result = await client.call_method("echo_map", test_map)
+    assert result == test_map, f"Map echo failed on {backend.name}"
+    assert isinstance(result, dict), f"Map echo type wrong on {backend.name}"
 
 
 @pytest.mark.asyncio
-async def test_rpc_error_handling(fast_rpc_backend):
-    """Test error handling across backends."""
+async def test_bytes_echo(bytes_rpc_backend):
+    """Test bytes echo (only on backends that support bytes)."""
+    server, client, backend = bytes_rpc_backend
+    
+    # Test bytes echo
+    test_string = "Hello, 世界! 🌍"
+    result = await client.call_method("echo_bytes", test_string)
+    expected = test_string.encode('utf-8')
+    assert result == expected, f"Bytes echo failed on {backend.name}"
+    assert isinstance(result, bytes), f"Bytes echo type wrong on {backend.name}"
+    
+    # Test with actual bytes input
+    test_bytes = b"binary\x00\x01\x02data"
+    result = await client.call_method("echo_bytes", test_bytes)
+    assert result == test_bytes, f"Bytes echo (bytes input) failed on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_async_operations(fast_rpc_backend):
+    """Test async operations like sleep."""
     server, client, backend = fast_rpc_backend
     
-    # Test method that raises an exception
-    with pytest.raises(Exception) as exc_info:
-        await client.call_method("error", "Custom error message")
+    # Test sleep operation
+    start_time = time.time()
+    result = await client.call_method("sleep", 0.1)
+    end_time = time.time()
     
-    assert "Custom error message" in str(exc_info.value), f"Error handling failed on {backend.name}"
+    assert "Slept for 0.1 seconds" in result, f"Sleep result wrong on {backend.name}"
+    assert (end_time - start_time) >= 0.09, f"Sleep duration too short on {backend.name}"
+    assert (end_time - start_time) < 0.5, f"Sleep duration too long on {backend.name}"
     
-    # Test calling non-existent method
-    with pytest.raises(Exception) as exc_info:
-        await client.call_method("non_existent_method")
-    
-    assert "Unknown method" in str(exc_info.value), f"Unknown method handling failed on {backend.name}"
+    # Verify sleep was logged
+    handlers = server.get_handlers()
+    sleep_calls = handlers.sleep_calls
+    assert len(sleep_calls) > 0, f"Sleep not logged on {backend.name}"
+    assert sleep_calls[-1]["duration"] == 0.1, f"Sleep duration not logged correctly on {backend.name}"
 
 
 @pytest.mark.asyncio
-async def test_rpc_fire_method(rpc_backend):
+async def test_error_handling(rpc_backend):
+    """Test error handling and exceptions."""
+    server, client, backend = rpc_backend
+    
+    # Test custom error
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("throw_error", "Custom test error")
+    assert "Custom test error" in str(exc_info.value), f"Custom error failed on {backend.name}"
+    
+    # Test default error
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("throw_error")
+    assert "Test error" in str(exc_info.value), f"Default error failed on {backend.name}"
+    
+    # Verify errors were logged
+    handlers = server.get_handlers()
+    error_calls = handlers.error_calls
+    assert len(error_calls) >= 2, f"Errors not logged on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_non_existing_method(rpc_backend):
+    """Test calling non-existing methods."""
+    server, client, backend = rpc_backend
+    
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("non_existing_method", "param1", "param2")
+    
+    assert "Unknown method" in str(exc_info.value), f"Unknown method error wrong on {backend.name}"
+    assert "non_existing_method" in str(exc_info.value), f"Method name not in error on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_missing_parameters(rpc_backend):
+    """Test methods with missing required parameters."""
+    server, client, backend = rpc_backend
+    
+    # Test add with insufficient parameters
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("add", 5)  # Needs at least 2 parameters
+    assert "at least 2 parameters" in str(exc_info.value), f"Missing params error wrong on {backend.name}"
+    
+    # Test multiply with insufficient parameters
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("multiply", 5)  # Needs at least 2 parameters
+    assert "at least 2 parameters" in str(exc_info.value), f"Missing params error wrong on {backend.name}"
+    
+    # Test sleep with no parameters
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("sleep")  # Needs duration parameter
+    assert "duration parameter" in str(exc_info.value), f"Sleep missing param error wrong on {backend.name}"
+    
+    # Test method that explicitly checks parameter count
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("require_params", "param1", "param2")  # Needs 3 params
+    assert "needs 3 parameters" in str(exc_info.value), f"Require params error wrong on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_timeout_condition(fast_rpc_backend):
+    """Test timeout conditions."""
+    server, client, backend = fast_rpc_backend
+    
+    # Set a short timeout
+    client.set_timeout(200)  # 200ms timeout
+    
+    # Try to call a method that takes longer than timeout
+    with pytest.raises(Exception) as exc_info:
+        await client.call_method("sleep", 0.5)  # 500ms sleep with 200ms timeout
+    
+    # Check that it's a timeout error
+    error_str = str(exc_info.value)
+    assert "timeout" in error_str.lower() or "Timeout" in error_str, f"Timeout error not detected on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_complex_data_structures(rpc_backend):
+    """Test complex data structures and nested objects."""
+    server, client, backend = rpc_backend
+    
+    # Get complex data from server
+    result = await client.call_method("get_complex_data")
+    
+    assert isinstance(result, dict), f"Complex data not dict on {backend.name}"
+    assert result["string"] == "Hello World", f"String field wrong on {backend.name}"
+    assert result["integer"] == 42, f"Integer field wrong on {backend.name}"
+    assert abs(result["float"] - 3.14159) < 0.00001, f"Float field wrong on {backend.name}"
+    assert result["boolean"] is True, f"Boolean field wrong on {backend.name}"
+    assert result["null_value"] is None, f"Null field wrong on {backend.name}"
+    assert result["array"] == [1, 2, 3, "mixed", True], f"Array field wrong on {backend.name}"
+    
+    # Check nested object
+    nested = result["nested_object"]
+    assert isinstance(nested, dict), f"Nested object not dict on {backend.name}"
+    assert nested["inner_string"] == "nested", f"Nested string wrong on {backend.name}"
+    assert nested["inner_array"] == [{"deep": "value"}], f"Nested array wrong on {backend.name}"
+    
+    # Bytes field handling depends on backend
+    if backend.supports_bytes:
+        assert isinstance(result["bytes_data"], bytes), f"Bytes field type wrong on {backend.name}"
+    else:
+        # JSON backends convert bytes to string
+        assert isinstance(result["bytes_data"], str), f"Bytes field type wrong on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_fire_and_forget(rpc_backend):
     """Test fire-and-forget method calls."""
     server, client, backend = rpc_backend
     
     # Clear call log
-    server.clear_call_log()
+    await client.call_method("clear_logs")
     
-    # Fire method
-    await client.fire_method("echo", "fire_test_message")
+    # Fire method (no response expected)
+    await client.fire_method("add", 10, 20, 30)
     
     # Give some time for processing
     await asyncio.sleep(0.2)
     
     # Verify the method was called by checking the call log
-    call_log = server.get_call_log()
-    assert len(call_log) >= 1, f"Fire method not logged on {backend.name}"
+    call_log = await client.call_method("get_call_log")
     
-    # Find the echo call in the log
-    echo_calls = [call for call in call_log if call["method"] == "echo"]
-    assert len(echo_calls) >= 1, f"Echo fire method not found in log on {backend.name}"
-    assert echo_calls[0]["args"] == ["fire_test_message"], f"Fire method args wrong on {backend.name}"
+    # Should have at least the clear_logs and add calls
+    assert len(call_log) >= 2, f"Fire method not logged on {backend.name}"
+    
+    # Find the add call
+    add_calls = [call for call in call_log if call["method"] == "add"]
+    assert len(add_calls) >= 1, f"Fire add method not found in log on {backend.name}"
+    assert add_calls[-1]["args"] == [10, 20, 30], f"Fire method args wrong on {backend.name}"
 
 
 @pytest.mark.asyncio
-async def test_rpc_concurrent_calls(fast_rpc_backend):
-    """Test concurrent RPC calls."""
+async def test_concurrent_operations(fast_rpc_backend):
+    """Test concurrent RPC operations."""
     server, client, backend = fast_rpc_backend
     
-    # Make multiple concurrent calls
+    # Test concurrent arithmetic operations
     tasks = [
-        client.call_method("add", i, i)
-        for i in range(3)  # Small number for fast testing
+        client.call_method("add", i, i * 2),
+        client.call_method("multiply", i, 3),
+        client.call_method("echo_int", i * 10)
+        for i in range(1, 4)  # Small number for fast testing
     ]
     
-    # Wait for all calls to complete
     results = await asyncio.gather(*tasks)
     
     # Verify results
-    expected = [i + i for i in range(3)]
-    assert results == expected, f"Concurrent calls failed on {backend.name}"
-
-
-# ===== JSON-Specific Tests =====
-
-@pytest.mark.asyncio
-async def test_json_specific_methods(json_rpc_backend):
-    """Test JSON-specific functionality."""
-    server, client, backend = json_rpc_backend
+    expected_results = []
+    for i in range(1, 4):
+        expected_results.extend([
+            i + (i * 2),  # add result
+            i * 3,        # multiply result
+            i * 10        # echo_int result
+        ])
     
-    # Test JSON echo
-    result = await client.call_method("json_echo", "Hello JSON World!")
-    assert isinstance(result, dict), f"JSON echo should return dict on {backend.name}"
-    assert result["echoed"] == "Hello JSON World!", f"JSON echo content wrong on {backend.name}"
-    assert result["type"] == "json_response", f"JSON echo type wrong on {backend.name}"
-    
-    # Test JSON data processing
-    complex_data = {
-        "users": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
-        "metadata": {"version": "1.0", "timestamp": "2024-01-01"}
-    }
-    
-    result = await client.call_method("process_json_data", complex_data)
-    assert isinstance(result, dict), f"JSON processing should return dict on {backend.name}"
-    assert result["processed"] is True, f"JSON processing flag wrong on {backend.name}"
-    assert "users" in result["input_keys"], f"JSON processing keys wrong on {backend.name}"
-    assert "metadata" in result["input_keys"], f"JSON processing keys wrong on {backend.name}"
+    assert results == expected_results, f"Concurrent operations failed on {backend.name}"
 
 
 @pytest.mark.asyncio
-async def test_json_data_integrity(json_rpc_backend):
-    """Test that complex JSON data maintains integrity through transformation."""
-    server, client, backend = json_rpc_backend
-    
-    # Test with various JSON data types
-    test_cases = [
-        {"string": "Hello 世界 🌍"},  # Unicode
-        {"numbers": [1, 2.5, -3, 0]},  # Various numbers
-        {"nested": {"deep": {"very": {"deep": "value"}}}},  # Deep nesting
-        {"mixed": [1, "two", {"three": 3}, [4, 5]]},  # Mixed types
-        {"boolean_and_null": [True, False, None]},  # Special values
-    ]
-    
-    for test_data in test_cases:
-        result = await client.call_method("echo", test_data)
-        assert result == test_data, f"JSON integrity failed for {test_data} on {backend.name}"
-
-
-# ===== Performance and Stress Tests =====
-
-@pytest.mark.asyncio
-async def test_rpc_performance_simple(fast_rpc_backend):
-    """Test basic performance with simple operations."""
-    server, client, backend = fast_rpc_backend
-    
-    import time
-    
-    # Measure time for multiple simple calls
-    start_time = time.time()
-    
-    tasks = [client.call_method("add", i, i) for i in range(10)]
-    results = await asyncio.gather(*tasks)
-    
-    end_time = time.time()
-    duration = end_time - start_time
-    
-    # Verify results
-    expected = [i + i for i in range(10)]
-    assert results == expected, f"Performance test results wrong on {backend.name}"
-    
-    # Basic performance check (should complete in reasonable time)
-    assert duration < 5.0, f"Performance test too slow ({duration:.2f}s) on {backend.name}"
-    
-    print(f"📊 {backend.name}: 10 concurrent calls in {duration:.3f}s")
-
-
-@pytest.mark.asyncio
-async def test_rpc_event_broadcasting(rpc_backend):
-    """Test event broadcasting functionality."""
+async def test_connection_management(rpc_backend):
+    """Test connection management and server info."""
     server, client, backend = rpc_backend
     
-    # Test event emission
+    # Get connection ID
+    conn_id = await client.call_method("get_connection_id")
+    assert conn_id == client.get_id(), f"Connection ID mismatch on {backend.name}"
+    
+    # Verify connection is active
+    assert server.is_active(conn_id), f"Connection not active on {backend.name}"
+    
+    # Get server info
+    server_info = await client.call_method("get_server_info")
+    assert isinstance(server_info, dict), f"Server info not dict on {backend.name}"
+    assert server_info["server_type"] == "UnifiedTestServer", f"Server type wrong on {backend.name}"
+    assert server_info["connections"] >= 1, f"Connection count wrong on {backend.name}"
+    assert server_info["backend_type"] == "unified", f"Backend type wrong on {backend.name}"
+
+
+@pytest.mark.asyncio
+async def test_event_emission(rpc_backend):
+    """Test event emission and broadcasting."""
+    server, client, backend = rpc_backend
+    
+    # Test event emission (should not raise errors)
     await client.emit("test_event", {"message": "Hello Events", "data": [1, 2, 3]})
+    await client.emit("user_action", {"action": "login", "user": "alice"})
     
     # Give time for event processing
     await asyncio.sleep(0.1)
     
     # For now, just verify no errors occurred
-    # In a real scenario, you'd have multiple clients to test broadcasting
+    # In a real multi-client scenario, you'd test actual broadcasting
     assert True, f"Event emission completed on {backend.name}"
 
 
-# ===== Utility Functions for Adding New Backends =====
-
-def create_custom_backend(name: str, description: str, 
-                         server_factory: Callable[[], BaseTestRpcServer],
-                         pipe_factory: Callable[[], Tuple[Pipe, Pipe]],
-                         cleanup_func: Optional[Callable] = None) -> RpcBackendConfig:
-    """
-    Utility function to easily create custom backend configurations.
+@pytest.mark.asyncio
+async def test_performance_baseline(fast_rpc_backend):
+    """Test basic performance baseline."""
+    server, client, backend = fast_rpc_backend
     
-    Args:
-        name: Backend name
-        description: Backend description
-        server_factory: Function that creates a server instance
-        pipe_factory: Function that creates a (server_pipe, client_pipe) tuple
-        cleanup_func: Optional cleanup function
+    # Measure time for simple operations
+    start_time = time.time()
     
-    Returns:
-        A custom RpcBackendConfig instance
-    """
+    # Perform multiple simple operations
+    tasks = [
+        client.call_method("add", i, i + 1)
+        for i in range(10)
+    ]
     
-    class CustomBackend(RpcBackendConfig):
-        def __init__(self):
-            super().__init__(name=name, description=description)
-        
-        async def create_server_client_pair(self) -> Tuple[BaseTestRpcServer, RpcV1]:
-            server = server_factory()
-            server_pipe, client_pipe = pipe_factory()
-            
-            client_id = f"custom-client-{uuid.uuid4()}"
-            await server.add_connection(client_id, server_pipe)
-            
-            def client_method_handler(method: str, args: List[Any]) -> Any:
-                return f"Custom client handled {method}"
-            
-            async def client_event_handler(topic: str, message: Any) -> None:
-                pass
-            
-            client = RpcV1.make_rpc_v1(
-                client_pipe, client_id, client_method_handler, client_event_handler
-            )
-            
-            return server, client
-        
-        async def cleanup_backend(self, server: BaseTestRpcServer, client: RpcV1):
-            if cleanup_func:
-                await cleanup_func(server, client)
-            await server.cleanup()
+    results = await asyncio.gather(*tasks)
+    end_time = time.time()
     
-    return CustomBackend()
-
-
-# ===== Example of Adding a New Backend Type =====
-
-# Example: Adding a compression backend
-# def create_compression_backend():
-#     """Example of how to add a new backend type."""
-#     
-#     def server_factory():
-#         return SimpleTestRpcServer()
-#     
-#     def pipe_factory():
-#         # Create pipes with compression transformer
-#         raw_pipe1, raw_pipe2 = Pipe.create_pair()
-#         compressed_pipe1 = CompressionTransformer(raw_pipe1)
-#         compressed_pipe2 = CompressionTransformer(raw_pipe2)
-#         return compressed_pipe1, compressed_pipe2
-#     
-#     return create_custom_backend(
-#         name="in-memory-compression",
-#         description="In-memory communication with compression",
-#         server_factory=server_factory,
-#         pipe_factory=pipe_factory
-#     )
+    duration = end_time - start_time
+    
+    # Verify results
+    expected = [i + (i + 1) for i in range(10)]
+    assert results == expected, f"Performance test results wrong on {backend.name}"
+    
+    # Basic performance check (should complete in reasonable time)
+    assert duration < 2.0, f"Performance test too slow ({duration:.2f}s) on {backend.name}"
+    
+    print(f"📊 {backend.name}: 10 concurrent calls in {duration:.3f}s ({1000*duration/10:.1f}ms per call)")
 
 
 if __name__ == "__main__":
