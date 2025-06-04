@@ -4,9 +4,7 @@ from typing import Any, Generic, List
 from unittest.mock import AsyncMock, MagicMock
 
 from cbor_rpc import Pipe, RpcV1, DeferredPromise
-from tests.test_rpc_generic import SimplePipe
-
-
+from tests.helpers import SimplePipe
 
 
 

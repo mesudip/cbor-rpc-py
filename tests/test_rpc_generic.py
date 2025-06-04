@@ -794,11 +794,15 @@ async def test_concurrent_operations(fast_rpc_backend):
     
     # Test concurrent arithmetic operations
     tasks = [
-        client.call_method("add", i, i * 2),
-        client.call_method("multiply", i, 3),
-        client.call_method("echo_int", i * 10)
-        for i in range(1, 4)  # Small number for fast testing
-    ]
+            client.call_method("add", i, i * 2)
+            for i in range(1, 4)
+        ] + [
+            client.call_method("multiply", i, 3)
+            for i in range(1, 4)
+        ] + [
+            client.call_method("echo_int", i * 10)
+            for i in range(1, 4)
+        ]
     
     results = await asyncio.gather(*tasks)
     

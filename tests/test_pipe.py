@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from typing import Any
 from cbor_rpc import Pipe, AbstractEmitter
-from tests.test_rpc_generic import SimplePipe
+from tests.helpers import SimplePipe
 
 
 @pytest.fixture
