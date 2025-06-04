@@ -236,7 +236,6 @@ async def test_tcp_client_connection_tracking_self():
     server_host, server_port = server.get_address()
     
     
-    
     try:
         # Create multiple clients
         clients: List[TcpPipe] = []

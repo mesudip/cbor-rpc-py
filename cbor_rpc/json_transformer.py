@@ -33,13 +33,9 @@ class JsonTransformer(Transformer[Any, Any]):
             TypeError: If data is not JSON serializable
             UnicodeEncodeError: If encoding fails
         """
-        try:
-            json_str = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
-            return json_str.encode(self.encoding)
-        except (TypeError, ValueError) as e:
-            raise TypeError(f"Object is not JSON serializable: {e}")
-        except UnicodeEncodeError as e:
-            raise UnicodeEncodeError(f"Failed to encode JSON to {self.encoding}: {e}")
+        json_str = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+        return json_str.encode(self.encoding)
+
     
     async def decode(self, data: Union[bytes, str]) -> Any:
         """
@@ -55,19 +51,15 @@ class JsonTransformer(Transformer[Any, Any]):
             json.JSONDecodeError: If data is not valid JSON
             UnicodeDecodeError: If bytes cannot be decoded
         """
-        try:
-            if isinstance(data, bytes):
-                json_str = data.decode(self.encoding)
-            elif isinstance(data, str):
-                json_str = data
-            else:
-                raise TypeError(f"Expected bytes or str, got {type(data)}")
-            
-            return json.loads(json_str)
-        except UnicodeDecodeError as e:
-            raise UnicodeDecodeError(f"Failed to decode bytes as {self.encoding}: {e}")
-        except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(f"Invalid JSON: {e}")
+        if isinstance(data, bytes):
+            json_str = data.decode(self.encoding)
+        elif isinstance(data, str):
+            json_str = data
+        else:
+            raise TypeError(f"Expected bytes or str, got {type(data)}")
+        
+        return json.loads(json_str)
+
     
     @classmethod
     def create_pair(cls, encoding: str = 'utf-8') -> tuple['JsonTransformer', 'JsonTransformer']:
