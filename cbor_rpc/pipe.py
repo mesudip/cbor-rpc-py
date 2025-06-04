@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Generic, Callable, Tuple
+from typing import Any, TypeVar, Generic, Callable, Tuple, Optional
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
@@ -41,64 +41,42 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
         Returns:
             A tuple of (pipe1, pipe2) where data written to pipe1 is emitted on pipe2 and vice versa.
         """
-        pipe1 = SimplePipe()
-        pipe2 = SimplePipe()
-        Pipe.attach(pipe1, pipe2)
-        return pipe1, pipe2
-
-
-class SimplePipe(Pipe[T1, T1], Generic[T1]):
-    def __init__(self):
-        super().__init__()
-        self._closed = False
-
-    async def write(self, chunk: T1) -> bool:
-        if self._closed:
-            return False
-        await self._emit("data", chunk)
-        return True
-
-    async def terminate(self, *args: Any) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        await self._emit("close", *args)
-
-
-class Duplex(Pipe[T1, T2], Generic[T1, T2]):
-    def __init__(self):
-        super().__init__()
-        self.reader: Pipe[T1, Any] = SimplePipe()
-        self.writer: Pipe[Any, T2] = SimplePipe()
-        self._closed = False
-        
-        # Set up error propagation
-        async def forward_error(err):
-            await self._emit("error", err)
+        class ConnectedPipe(Pipe[Any, Any]):
+            def __init__(self):
+                super().__init__()
+                self.connected_pipe: Optional['ConnectedPipe'] = None
+                self._closed = False
             
-        self.reader.on("error", forward_error)
-        self.writer.on("error", forward_error)
+            def connect_to(self, other: 'ConnectedPipe'):
+                self.connected_pipe = other
+                other.connected_pipe = self
+            
+            async def write(self, chunk: Any) -> bool:
+                if self._closed:
+                    return False
+                
+                # Forward to connected pipe
+                if self.connected_pipe and not self.connected_pipe._closed:
+                    await self.connected_pipe._emit("data", chunk)
+                
+                return True
+            
+            async def terminate(self, *args: Any) -> None:
+                if self._closed:
+                    return
+                
+                self._closed = True
+                await self._emit("close", *args)
+                
+                # Notify connected pipe
+                if self.connected_pipe and not self.connected_pipe._closed:
+                    await self.connected_pipe._emit("close", *args)
         
-        # Forward data events from reader to this pipe
-        async def forward_data(chunk):
-            await self._emit("data", chunk)
-        self.reader.on("data", forward_data)
-
-    async def write(self, chunk: Any) -> bool:
-        if self._closed:
-            return False
-        result = await self.writer.write(chunk)
-        return result
-
-    async def terminate(self, *args: Any) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        await asyncio.gather(
-            self.reader.terminate(*args), 
-            self.writer.terminate(*args)
-        )
-        await self._emit("close", *args)
+        pipe1 = ConnectedPipe()
+        pipe2 = ConnectedPipe()
+        pipe1.connect_to(pipe2)
+        
+        return pipe1, pipe2
 
 
 class Transformer(Pipe[T1, T2], Generic[T1, T2]):

@@ -3,7 +3,7 @@ CBOR-RPC: An async-compatible CBOR-based RPC system
 """
 
 from .emitter import AbstractEmitter
-from .pipe import Pipe, SimplePipe, Duplex, Transformer
+from .pipe import Pipe, Transformer
 from .promise import DeferredPromise
 from .client import RpcClient, RpcAuthorizedClient, RpcV1
 from .server import RpcServer, RpcV1Server
@@ -17,8 +17,6 @@ __all__ = [
     
     # Pipe classes
     'Pipe',
-    'SimplePipe', 
-    'Duplex',
     'Transformer',
     
     # Promise
