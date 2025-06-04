@@ -2,6 +2,7 @@ import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
 from .pipe import Pipe
+from .server_base import Server
 
 
 class TcpPipe(Pipe[bytes, bytes]):
@@ -68,6 +69,45 @@ class TcpPipe(Pipe[bytes, bytes]):
             A TcpServer instance
         """
         return await TcpServer.create(host, port, backlog)
+
+    @staticmethod
+    async def create_pair() -> Tuple['TcpPipe', 'TcpPipe']:
+        """
+        Create a pair of connected TCP pipes using a local server.
+        
+        Returns:
+            A tuple of (client_pipe, server_pipe) connected via TCP
+        """
+        # Create a temporary server
+        server = await TcpServer.create('127.0.0.1', 0)
+        host, port = server.get_address()
+        
+        # Set up to capture the server-side connection
+        server_pipe = None
+        connection_ready = asyncio.Event()
+        
+        async def on_connection(pipe: TcpPipe):
+            nonlocal server_pipe
+            server_pipe = pipe
+            connection_ready.set()
+        
+        server.on_connection(on_connection)
+        
+        try:
+            # Create client connection
+            client_pipe = await TcpPipe.create_connection(host, port)
+            
+            # Wait for server connection
+            await connection_ready.wait()
+            
+            # Close the server but keep the connections
+            await server.stop()
+            
+            return client_pipe, server_pipe
+            
+        except Exception:
+            await server.stop()
+            raise
     
     @classmethod
     def from_socket(cls, sock: socket.socket) -> 'TcpPipe':
@@ -206,25 +246,19 @@ class TcpPipe(Pipe[bytes, bytes]):
         
         # Cancel the read task
         if self._read_task and not self._read_task.done():
-
-            (task,self._read_task)=(self._read_task,None)
+            task, self._read_task = self._read_task, None
             if task.cancel():
                 try:
-                    print(self,"--Waiting for read task")
                     await task
-                    print(self,"--Read task complete")
                 except asyncio.CancelledError:
                     pass
         
         # Close the writer
         if self._writer:
-            (writer,self._writer)=(self._writer,None)
+            writer, self._writer = self._writer, None
             try:
-                print(self,"--Waiting for writer close")
                 writer.close()
                 await writer.wait_closed()
-                print(self,"--Writer closed")
-
             except Exception:
                 pass  # Ignore errors during cleanup
 
@@ -254,15 +288,15 @@ class TcpPipe(Pipe[bytes, bytes]):
         return None
 
 
-class TcpServer:
+class TcpServer(Server[TcpPipe]):
     """
     A TCP server that creates TcpPipe instances for incoming connections.
+    Extends Server[TcpPipe] to provide type-safe TCP-specific functionality.
     """
     
     def __init__(self, server: asyncio.Server):
+        super().__init__()
         self._server = server
-        self._connections: set[TcpPipe] = set()
-        self._connection_handlers = []
     
     @classmethod
     async def create(cls, host: str = '0.0.0.0', port: int = 0, 
@@ -279,38 +313,65 @@ class TcpServer:
             A started TcpServer instance
         """
         tcp_server = cls.__new__(cls)
-        tcp_server._connections = set()
-        tcp_server._connection_handlers = []
+        Server.__init__(tcp_server)
         
         async def client_connected_cb(reader: asyncio.StreamReader, 
                                     writer: asyncio.StreamWriter) -> None:
-            tcp_duplex = TcpPipe(reader, writer)
-            tcp_server._connections.add(tcp_duplex)
-            
-            # Set up connection cleanup
-            async def cleanup(*args):
-                tcp_server._connections.discard(tcp_duplex)
-            tcp_duplex.on("close", cleanup)
-            
-            await tcp_duplex._setup_connection()
-            
-            # Call all connection handlers
-            for handler in tcp_server._connection_handlers:
-                try:
-                    if asyncio.iscoroutinefunction(handler):
-                        await handler(tcp_duplex)
-                    else:
-                        handler(tcp_duplex)
-                except Exception as e:
-                    print(f"Error in connection handler: {e}")
+            tcp_pipe = TcpPipe(reader, writer)
+            await tcp_pipe._setup_connection()
+            await tcp_server._add_connection(tcp_pipe)
         
         server = await asyncio.start_server(
             client_connected_cb, host, port, backlog=backlog
         )
         
         tcp_server._server = server
+        tcp_server._running = True
         return tcp_server
+
+    async def start(self, host: str = '0.0.0.0', port: int = 0, backlog: int = 100) -> Tuple[str, int]:
+        """
+        Start the TCP server (if not already started).
+        
+        Args:
+            host: The hostname or IP address to bind to
+            port: The port number to bind to
+            backlog: The maximum number of queued connections
+            
+        Returns:
+            A tuple of (host, port) where the server is listening
+        """
+        if self._running:
+            return self.get_address()
+        
+        # This method is for compatibility; typically create() is used instead
+        new_server = await TcpServer.create(host, port, backlog)
+        self._server = new_server._server
+        self._running = True
+        return self.get_address()
+
+    async def stop(self) -> None:
+        """Stop the TCP server and close all connections."""
+        if not self._running:
+            return
+            
+        self._running = False
+        
+        # Close all connections
+        await self.close_all_connections()
+        
+        # Close the server
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
     
+    def get_address(self) -> Tuple[str, int]:
+        """Get the server's listening address and port."""
+        if self._server and self._server.sockets:
+            return self._server.sockets[0].getsockname()[:2]
+        return ("", 0)
+
+    # Legacy methods for backward compatibility
     def on_connection(self, handler: Callable[[TcpPipe], None]) -> None:
         """
         Set a handler for new connections.
@@ -318,29 +379,8 @@ class TcpServer:
         Args:
             handler: A function that takes a TcpPipe as argument
         """
-        self._connection_handlers.append(handler)
-    
-    def get_address(self) -> Tuple[str, int]:
-        """Get the server's listening address and port."""
-        return self._server.sockets[0].getsockname()[:2]
-    
-    def get_connections(self) -> set[TcpPipe]:
-        """Get all active connections."""
-        return self._connections.copy()
+        super().on_connection(handler)
     
     async def close(self) -> None:
-        """Close the server and all connections."""
-        # Close all connections
-        close_tasks = [conn.terminate() for conn in self._connections.copy()]
-        if close_tasks:
-            await asyncio.gather(*close_tasks, return_exceptions=True)
-        
-        # Close the server
-        self._server.close()
-        await self._server.wait_closed()
-    
-    async def __aenter__(self):
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+        """Legacy method - use stop() instead."""
+        await self.stop()
