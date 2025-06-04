@@ -12,6 +12,8 @@ class AbstractEmitter(ABC):
     def unsubscribe(self, event: str, handler: Callable) -> None:
         if event in self._subscribers:
             self._subscribers[event] = [h for h in self._subscribers[event] if h != handler]
+        if event in self._pipelines:
+            self._pipelines[event] = [h for h in self._pipelines[event] if h != handler]
 
     def replace_on_handler(self, event_type: str, handler: Callable) -> None:
         self._subscribers[event_type] = [handler]
@@ -29,6 +31,7 @@ class AbstractEmitter(ABC):
 
     async def _notify(self, event_type: str, *args: Any) -> None:
         tasks = []
+
         for pipeline in self._pipelines.get(event_type, []):
             if inspect.iscoroutinefunction(pipeline):
                 task = asyncio.create_task(pipeline(*args))
@@ -37,13 +40,19 @@ class AbstractEmitter(ABC):
                 try:
                     pipeline(*args)
                 except Exception as e:
-                    # We should log the exception but not propagate it
-                    print(f"Error in pipeline: {e}")
-        
+                    await self._emit("error", e)
+                    raise e
+
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    await self._emit("error", result)
+                    raise result
+
         await self._emit(event_type, *args)
+
+
 
     def on(self, event: str, handler: Callable) -> None:
         self._subscribers.setdefault(event, []).append(handler)

@@ -7,7 +7,7 @@ from .pipe import Pipe, SimplePipe, Duplex
 from .promise import DeferredPromise
 from .client import RpcClient, RpcAuthorizedClient, RpcV1
 from .server import RpcServer, RpcV1Server
-from .tcp import TcpDuplex, TcpServer
+from .tcp import TcpPipe, TcpServer
 
 __all__ = [
     # Emitter
@@ -31,7 +31,7 @@ __all__ = [
     'RpcV1Server',
     
     # TCP classes
-    'TcpDuplex',
+    'TcpPipe',
     'TcpServer',
 ]
 

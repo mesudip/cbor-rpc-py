@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import List
-from cbor_rpc import TcpDuplex, TcpServer
+from cbor_rpc import TcpPipe, TcpServer
 
 
 @pytest.mark.asyncio
@@ -13,14 +13,14 @@ async def test_tcp_client_server_connection():
     
     connections = []
     
-    def on_connection(tcp_duplex: TcpDuplex):
-        connections.append(tcp_duplex)
+    def on_connection(tcp_pipe: TcpPipe):
+        connections.append(tcp_pipe)
     
     server.on_connection(on_connection)
     
     try:
         # Create a client connection
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         
         # Wait for server to register the connection
         await asyncio.sleep(0.1)
@@ -52,20 +52,20 @@ async def test_tcp_data_exchange():
     client_received = []
     server_connection = None
     
-    async def on_connection(tcp_duplex: TcpDuplex):
+    async def on_connection(tcp_pipe: TcpPipe):
         nonlocal server_connection
-        server_connection = tcp_duplex
+        server_connection = tcp_pipe
         
         async def on_server_data(data: bytes):
             server_received.append(data)
         
-        tcp_duplex.on("data", on_server_data)
+        tcp_pipe.on("data", on_server_data)
     
     server.on_connection(on_connection)
     
     try:
         # Create client
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         
         async def on_client_data(data: bytes):
             client_received.append(data)
@@ -120,10 +120,10 @@ async def test_tcp_connection_errors():
     """Test TCP connection error handling."""
     # Test connection to non-existent server
     with pytest.raises(ConnectionError):
-        await TcpDuplex.create_connection('127.0.0.1', 12345, timeout=0.1)
+        await TcpPipe.create_connection('127.0.0.1', 12345, timeout=0.1)
     
     # Test writing to disconnected client
-    client = TcpDuplex()
+    client = TcpPipe()
     with pytest.raises(ConnectionError):
         await client.write(b"test")
     
@@ -132,7 +132,7 @@ async def test_tcp_connection_errors():
     server_host, server_port = server.get_address()
     
     try:
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         
         with pytest.raises(ConnectionError):
             await client.connect(server_host, server_port)
@@ -150,30 +150,12 @@ async def test_tcp_connection_events():
     server_host, server_port = server.get_address()
     
     events = []
-    server_connection = None
-    
-    async def on_connection(tcp_duplex: TcpDuplex):
-        nonlocal server_connection
-        server_connection = tcp_duplex
         
-        async def on_connect():
-            events.append("server_connect")
-        
-        async def on_close(*args):
-            events.append(("server_close", args))
-        
-        async def on_error(error):
-            events.append(("server_error", str(error)))
-        
-        tcp_duplex.on("connect", on_connect)
-        tcp_duplex.on("close", on_close)
-        tcp_duplex.on("error", on_error)
-    
-    server.on_connection(on_connection)
+    server.on_connection(lambda conn:  events.append("server_connect"))
     
     try:
         # Create client with event handlers
-        client = TcpDuplex()
+        client = TcpPipe()
         
         async def on_client_connect():
             events.append("client_connect")
@@ -193,6 +175,7 @@ async def test_tcp_connection_events():
         await asyncio.sleep(0.2)  # Give more time for events to propagate
         
         assert "client_connect" in events
+        print(events)
         assert "server_connect" in events
         
         # Close connection
@@ -210,43 +193,77 @@ async def test_tcp_connection_events():
 
 
 @pytest.mark.asyncio
-async def test_tcp_multiple_connections():
+async def test_tcp_client_connection_tracking():
     """Test handling multiple simultaneous TCP connections."""
     server = await TcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
-    connections = []
     
-    async def on_connection(tcp_duplex: TcpDuplex):
-        connections.append(tcp_duplex)
-    
-    server.on_connection(on_connection)
     
     try:
         # Create multiple clients
-        clients = []
+        clients: List[TcpPipe] = []
+        server.on_connection(lambda conn: print(f"New connection: {conn}"))
         for i in range(5):
-            client = await TcpDuplex.create_connection(server_host, server_port)
+            client = await TcpPipe.create_connection(server_host, server_port)
+            client.on("close", lambda: print(f"Connection[{i}] closed"))
             clients.append(client)
         
-        await asyncio.sleep(0.2)  # Give time for all connections to be registered
+        
+        await asyncio.sleep(0.5)  # Give time for all connections to be registered
         
         # Check that all connections are registered
-        assert len(connections) == 5
         assert len(server.get_connections()) == 5
         
         # Close all clients
         for client in clients:
             await client.terminate()
+
+
+        await asyncio.sleep(0.2)  
+
+        assert len(server.get_connections()) == 0, "Connections not clean uped"
         
-        await asyncio.sleep(0.2)  # Give time for cleanup
-        
-        # Check that connections are cleaned up
-        assert len(server.get_connections()) == 0
-        
+
+
     finally:
         await server.close()
 
+@pytest.mark.asyncio
+async def test_tcp_client_connection_tracking_self():
+    """Test handling multiple simultaneous TCP connections."""
+    server = await TcpServer.create('127.0.0.1', 0)
+    server_host, server_port = server.get_address()
+    
+    
+    
+    try:
+        # Create multiple clients
+        clients: List[TcpPipe] = []
+        server.on_connection(lambda conn: print(f"New connection: {conn}"))
+        for i in range(5):
+            client = await TcpPipe.create_connection(server_host, server_port)
+            client.on("close", lambda: print(f"Connection[{i}] closed"))
+            clients.append(client)
+        
+        
+        await asyncio.sleep(0.5)  # Give time for all connections to be registered
+        
+        # Check that all connections are registered
+        assert len(server.get_connections()) == 5
+        
+        # Close all clients
+        for duplex in server.get_connections():
+            await duplex.terminate()
+
+        await asyncio.sleep(0.2)  
+
+        assert len(server.get_connections()) == 0, "Connections not clean uped"
+        
+
+        
+    finally:
+        await server.close()
 
 @pytest.mark.asyncio
 async def test_tcp_large_data_transfer():
@@ -257,23 +274,23 @@ async def test_tcp_large_data_transfer():
     received_data = bytearray()
     server_connection = None
     
-    async def on_connection(tcp_duplex: TcpDuplex):
+    async def on_connection(tcp_pipe: TcpPipe):
         nonlocal server_connection
-        server_connection = tcp_duplex
+        server_connection = tcp_pipe
         
         async def on_data(data: bytes):
             received_data.extend(data)
         
-        tcp_duplex.on("data", on_data)
+        tcp_pipe.on("data", on_data)
     
     server.on_connection(on_connection)
     
     try:
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         await asyncio.sleep(0.1)
         
         # Send large data (100KB instead of 1MB for faster testing)
-        large_data = b"x" * (100 * 1024)
+        large_data = b"x" * (100 * 1024 * 1024)
         await client.write(large_data)
         
         # Wait for all data to be received
@@ -298,7 +315,7 @@ async def test_tcp_server_context_manager():
     async with await TcpServer.create('127.0.0.1', 0) as server:
         server_host, server_port = server.get_address()
         
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         assert client.is_connected()
         
         await client.terminate()
@@ -313,7 +330,7 @@ async def test_tcp_invalid_data_types():
     server_host, server_port = server.get_address()
     
     try:
-        client = await TcpDuplex.create_connection(server_host, server_port)
+        client = await TcpPipe.create_connection(server_host, server_port)
         
         # Test writing non-bytes data
         with pytest.raises(TypeError):

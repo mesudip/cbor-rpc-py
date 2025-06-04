@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, AsyncGenera
 from dataclasses import dataclass
 
 from cbor_rpc import (
-    Pipe, SimplePipe, Duplex, TcpDuplex, TcpServer,
+    Pipe, SimplePipe, Duplex, TcpPipe, TcpServer,
     RpcV1, RpcV1Server, RpcClient, RpcAuthorizedClient
 )
 
@@ -113,7 +113,7 @@ class InMemoryRpcBackend(RpcBackendConfig):
 
 
 class TcpRpcBackend(RpcBackendConfig):
-    """TCP-based RPC backend using TcpDuplex."""
+    """TCP-based RPC backend using TcpPipe."""
     
     def __init__(self):
         super().__init__(name="tcp")
@@ -131,14 +131,14 @@ class TcpRpcBackend(RpcBackendConfig):
         client_ready = asyncio.Event()
         client_id = str(uuid.uuid4())
         
-        async def on_connection(tcp_duplex: TcpDuplex):
+        async def on_connection(tcp_duplex: TcpPipe):
             await server.add_connection(client_id, tcp_duplex)
             client_ready.set()
         
         tcp_server.on_connection(on_connection)
         
         # Create client connection
-        client_pipe = await TcpDuplex.create_connection(host, port)
+        client_pipe = await TcpPipe.create_connection(host, port)
         
         # Wait for server to register the connection
         await client_ready.wait()

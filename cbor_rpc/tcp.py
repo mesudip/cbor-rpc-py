@@ -1,10 +1,10 @@
 import asyncio
 import socket
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple, Union
 from .pipe import Pipe
 
 
-class TcpDuplex(Pipe[bytes, bytes]):
+class TcpPipe(Pipe[bytes, bytes]):
     """
     A TCP duplex pipe that implements Pipe<bytes, bytes> for network communication.
     Provides both client and server functionality for TCP connections.
@@ -21,7 +21,7 @@ class TcpDuplex(Pipe[bytes, bytes]):
         
     @classmethod
     async def create_connection(cls, host: str, port: int, 
-                              timeout: Optional[float] = None) -> 'TcpDuplex':
+                              timeout: Optional[float] = None) -> 'TcpPipe':
         """
         Create a TCP client connection to the specified host and port.
         
@@ -31,7 +31,7 @@ class TcpDuplex(Pipe[bytes, bytes]):
             timeout: Optional timeout for the connection attempt
             
         Returns:
-            A connected TcpDuplex instance
+            A connected TcpPipe instance
             
         Raises:
             ConnectionError: If the connection fails
@@ -70,15 +70,15 @@ class TcpDuplex(Pipe[bytes, bytes]):
         return await TcpServer.create(host, port, backlog)
     
     @classmethod
-    def from_socket(cls, sock: socket.socket) -> 'TcpDuplex':
+    def from_socket(cls, sock: socket.socket) -> 'TcpPipe':
         """
-        Create a TcpDuplex from an existing socket.
+        Create a TcpPipe from an existing socket.
         
         Args:
             sock: An existing connected socket
             
         Returns:
-            A TcpDuplex instance wrapping the socket
+            A TcpPipe instance wrapping the socket
         """
         # This will be set up when the connection is established
         tcp_duplex = cls()
@@ -127,7 +127,7 @@ class TcpDuplex(Pipe[bytes, bytes]):
         self._read_task = asyncio.create_task(self._read_loop())
         
         # Emit connection event
-        await self._emit("connect")
+        await self._notify("connect")
     
     async def _read_loop(self) -> None:
         """Continuously read data from the TCP connection and emit data events."""
@@ -206,20 +206,28 @@ class TcpDuplex(Pipe[bytes, bytes]):
         
         # Cancel the read task
         if self._read_task and not self._read_task.done():
-            self._read_task.cancel()
-            try:
-                await self._read_task
-            except asyncio.CancelledError:
-                pass
+
+            (task,self._read_task)=(self._read_task,None)
+            if task.cancel():
+                try:
+                    print(self,"--Waiting for read task")
+                    await task
+                    print(self,"--Read task complete")
+                except asyncio.CancelledError:
+                    pass
         
         # Close the writer
         if self._writer:
+            (writer,self._writer)=(self._writer,None)
             try:
-                self._writer.close()
-                await self._writer.wait_closed()
+                print(self,"--Waiting for writer close")
+                writer.close()
+                await writer.wait_closed()
+                print(self,"--Writer closed")
+
             except Exception:
                 pass  # Ignore errors during cleanup
-        
+
         # Emit close event
         await self._emit("close", *args)
     
@@ -248,12 +256,12 @@ class TcpDuplex(Pipe[bytes, bytes]):
 
 class TcpServer:
     """
-    A TCP server that creates TcpDuplex instances for incoming connections.
+    A TCP server that creates TcpPipe instances for incoming connections.
     """
     
     def __init__(self, server: asyncio.Server):
         self._server = server
-        self._connections: set[TcpDuplex] = set()
+        self._connections: set[TcpPipe] = set()
         self._connection_handlers = []
     
     @classmethod
@@ -276,7 +284,7 @@ class TcpServer:
         
         async def client_connected_cb(reader: asyncio.StreamReader, 
                                     writer: asyncio.StreamWriter) -> None:
-            tcp_duplex = TcpDuplex(reader, writer)
+            tcp_duplex = TcpPipe(reader, writer)
             tcp_server._connections.add(tcp_duplex)
             
             # Set up connection cleanup
@@ -303,12 +311,12 @@ class TcpServer:
         tcp_server._server = server
         return tcp_server
     
-    def on_connection(self, handler) -> None:
+    def on_connection(self, handler: Callable[[TcpPipe], None]) -> None:
         """
         Set a handler for new connections.
         
         Args:
-            handler: A function that takes a TcpDuplex as argument
+            handler: A function that takes a TcpPipe as argument
         """
         self._connection_handlers.append(handler)
     
@@ -316,7 +324,7 @@ class TcpServer:
         """Get the server's listening address and port."""
         return self._server.sockets[0].getsockname()[:2]
     
-    def get_connections(self) -> set[TcpDuplex]:
+    def get_connections(self) -> set[TcpPipe]:
         """Get all active connections."""
         return self._connections.copy()
     

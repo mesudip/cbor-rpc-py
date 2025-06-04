@@ -176,7 +176,7 @@ async def test_pipeline_failure():
     # Notify with failing pipeline
     try:
         await emitter._notify("test", "event5")
-        assert False, "Expected ValueError"
+        assert False, "Exception not thrown"
     except ValueError:
         pass
 

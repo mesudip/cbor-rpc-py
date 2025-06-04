@@ -35,7 +35,7 @@ async def test_on_event_subscription(pipe):
         called = True
     
     pipe.on("data", handler)
-    await pipe._emit("data", "test_chunk")
+    await pipe._notify("data", "test_chunk")
     assert called is True
 
 @pytest.mark.asyncio
@@ -91,7 +91,7 @@ async def test_attach_pipes():
     await pipe1.write("test_chunk")
     assert called is True
 
-def test_unsubscribe_handler(pipe):
+def test_unsubscribe_handler(pipe:Pipe):
     # Positive case: Unsubscribing a handler
     called = False
     def handler(chunk: Any) -> None:

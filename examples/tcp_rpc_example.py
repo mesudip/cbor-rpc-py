@@ -1,12 +1,12 @@
 """
-Example demonstrating how to use TcpDuplex with CBOR-RPC.
+Example demonstrating how to use TcpPipe with CBOR-RPC.
 This example shows both client and server implementations using TCP transport.
 """
 
 import asyncio
 import json
 from typing import Any, List
-from cbor_rpc import TcpDuplex, TcpServer, RpcV1, RpcV1Server
+from cbor_rpc import TcpPipe, TcpServer, RpcV1, RpcV1Server
 
 
 class TcpRpcServer(RpcV1Server):
@@ -22,7 +22,7 @@ class TcpRpcServer(RpcV1Server):
         """Start the TCP server and begin accepting connections."""
         self.tcp_server = await TcpServer.create(self.host, self.port)
         
-        async def on_connection(tcp_duplex: TcpDuplex):
+        async def on_connection(tcp_duplex: TcpPipe):
             # Create a unique connection ID
             peer_info = tcp_duplex.get_peer_info()
             conn_id = f"{peer_info[0]}:{peer_info[1]}" if peer_info else "unknown"
@@ -87,7 +87,7 @@ async def run_client(host: str, port: int):
     """Run the RPC client example."""
     try:
         # Create TCP connection
-        tcp_duplex = await TcpDuplex.create_connection(host, port)
+        tcp_duplex = await TcpPipe.create_connection(host, port)
         print(f"Connected to server at {host}:{port}")
         
         # Create RPC client

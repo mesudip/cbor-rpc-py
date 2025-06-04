@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import Any, Dict, List, Optional, Tuple
 from cbor_rpc import (
-    Pipe, SimplePipe, Duplex, TcpDuplex, TcpServer,
+    Pipe, SimplePipe, Duplex, TcpPipe, TcpServer,
     RpcV1, RpcV1Server
 )
 
@@ -134,14 +134,14 @@ async def create_tcp_pair() -> Tuple[CalculatorRpcServer, RpcV1]:
     client_ready = asyncio.Event()
     client_id = "tcp-client"
     
-    async def on_connection(tcp_duplex: TcpDuplex):
+    async def on_connection(tcp_duplex: TcpPipe):
         await server.add_connection(client_id, tcp_duplex)
         client_ready.set()
     
     tcp_server.on_connection(on_connection)
     
     # Create client connection
-    client_pipe = await TcpDuplex.create_connection(host, port)
+    client_pipe = await TcpPipe.create_connection(host, port)
     
     # Wait for server to register the connection
     await client_ready.wait()

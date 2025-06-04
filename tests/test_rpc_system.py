@@ -27,7 +27,7 @@ class MockPipe(Pipe):
 
     async def write(self, chunk: Any) -> bool:
         self.written_data.append(chunk)
-        await self._emit("data", chunk)  # Changed from _notify to _emit
+        await self._notify("data", chunk) 
         return True
 
     async def terminate(self, *args: Any) -> None:
@@ -36,7 +36,7 @@ class MockPipe(Pipe):
         await self._emit("close", *args)
 
     async def simulate_data(self, data: Any):
-        await self._emit("data", data)  # Changed from _notify to _emit
+        await self._notify("data", data)
 
     async def simulate_close(self, *args: Any):
         await self._emit("close", *args)
@@ -110,24 +110,24 @@ async def test_pipe_attach():
 
 @pytest.mark.asyncio
 async def test_deferred_promise():
-    promise = DeferredPromise(100, "Test timeout")
+    promise = DeferredPromise(100)
     await promise.resolve("success")
     result = await promise.promise
     assert result == "success"
 
-    promise = DeferredPromise(100, "Test timeout")
+    promise = DeferredPromise(100)
     await promise.reject("error")
     with pytest.raises(Exception, match="error"):
         await promise.promise
 
-    promise = DeferredPromise(50, "Test timeout")
-    with pytest.raises(Exception, match="Test timeout"):
+    promise = DeferredPromise(50)
+    with pytest.raises(Exception, match="Timeout on RPC call"):
         await promise.promise
 
 @pytest.mark.asyncio
 async def test_rpc_v1():
     pipe = MockPipe()
-    server = ConcreteRpcServer()
+    server: RpcV1Server = ConcreteRpcServer()
     await server.add_connection("client1", pipe)
 
     # Test method call
@@ -166,6 +166,7 @@ async def test_rpc_v1():
 @pytest.mark.asyncio
 async def test_rpc_v1_server():
     server = ConcreteRpcServer()
+    server.set_timeout(1000)
     pipe1 = MockPipe()
     pipe2 = MockPipe()
     await server.add_connection("client1", pipe1)
@@ -244,6 +245,7 @@ async def test_rpc_v1_server():
 async def test_read_only_client():
     pipe = MockPipe()
     client = RpcV1.read_only_client(pipe)
+    client.set_timeout(1000)
 
     # Test that method calls raise the expected exception
     try:
