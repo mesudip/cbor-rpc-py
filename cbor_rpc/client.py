@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
-from .pipe import Pipe
+from .async_pipe import Pipe
 from .promise import DeferredPromise
 
 

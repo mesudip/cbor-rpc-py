@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
 from .client import RpcClient, RpcAuthorizedClient, RpcV1
-from .pipe import Pipe
+from .async_pipe import Pipe
 
 
 class RpcServer(ABC):

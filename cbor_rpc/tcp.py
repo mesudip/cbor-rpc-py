@@ -1,7 +1,7 @@
 import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
-from .pipe import Pipe
+from .async_pipe import Pipe
 from .server_base import Server
 
 

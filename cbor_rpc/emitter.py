@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import asyncio
 import inspect
 
-
 class AbstractEmitter(ABC):
     def __init__(self):
         self._pipelines: Dict[str, List[Callable]] = {}
@@ -51,8 +50,6 @@ class AbstractEmitter(ABC):
                     raise result
 
         await self._emit(event_type, *args)
-
-
 
     def on(self, event: str, handler: Callable) -> None:
         self._subscribers.setdefault(event, []).append(handler)
