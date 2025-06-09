@@ -1,11 +1,11 @@
 from typing import Any, Generic, TypeVar
-from cbor_rpc import Pipe, RpcV1, DeferredPromise
+from cbor_rpc import EventPipe, RpcV1, TimedPromise
 
 # Generic type variables
 T1 = TypeVar('T1')
 
 
-class SimplePipe(Pipe[T1, T1], Generic[T1]):
+class SimplePipe(EventPipe[T1, T1], Generic[T1]):
     def __init__(self):
         super().__init__()
         self._closed = False

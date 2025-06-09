@@ -1,54 +1,19 @@
 from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
-from .client import RpcClient, RpcAuthorizedClient, RpcV1
-from .async_pipe import Pipe
 
-
-class RpcServer(ABC):
-    @abstractmethod
-    async def emit(self, connection_id: str, topic: str, message: Any) -> None:
-        pass
-
-    @abstractmethod
-    async def broadcast(self, topic: str, message: Any) -> None:
-        pass
-
-    @abstractmethod
-    async def call_method(self, connection_id: str, method: str, *args: Any) -> Any:
-        pass
-
-    @abstractmethod
-    async def fire_method(self, connection_id: str, method: str, *args: Any) -> None:
-        pass
-
-    @abstractmethod
-    async def disconnect(self, connection_id: str, reason: Optional[str] = None) -> None:
-        pass
-
-    @abstractmethod
-    def get_client(self, connection_id: str) -> Optional[RpcAuthorizedClient]:
-        pass
-
-    @abstractmethod
-    def with_client(self, connection_id: str, action: Callable) -> bool:
-        pass
-
-    @abstractmethod
-    def set_timeout(self, milliseconds: int) -> None:
-        pass
-
-    @abstractmethod
-    def is_active(self, connection_id: str) -> bool:
-        pass
+from cbor_rpc.pipe.server_base import Server
+from .rpc_base import RpcClient, RpcAuthorizedClient, RpcServer
+from .rpc_v1 import RpcV1
+from cbor_rpc.pipe.event_pipe import EventPipe
 
 
 class RpcV1Server(RpcServer):
-    def __init__(self):
+    def __init__(self,server:Server):
         self.active_connections: Dict[str, RpcV1] = {}
         self.timeout = 30000
 
-    async def add_connection(self, conn_id: str, rpc_client: Pipe[Any, Any]) -> None:
+    async def add_connection(self, conn_id: str, rpc_client: EventPipe[Any, Any]) -> None:
         def method_handler(method: str, args: List[Any]) -> Any:
             return self.handle_method_call(conn_id, method, args)
         

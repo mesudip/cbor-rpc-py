@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Callable
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
+import traceback
+import warnings
 
 class AbstractEmitter(ABC):
     def __init__(self):
@@ -17,16 +19,26 @@ class AbstractEmitter(ABC):
     def replace_on_handler(self, event_type: str, handler: Callable) -> None:
         self._subscribers[event_type] = [handler]
 
-    async def _emit(self, event_type: str, *args: Any) -> None:
+    def _run_background_task(self, coro: Callable[..., Any], *args: Any) -> None:
+        async def runner():
+            try:
+                await coro(*args)
+            except Exception as e:
+                traceback.print_exc()
+                warnings.warn(f"Background task error in handler: {e}", RuntimeWarning)
+
+        asyncio.create_task(runner())
+
+    def _emit(self, event_type: str, *args: Any) -> None:
         for sub in self._subscribers.get(event_type, []):
             try:
                 if inspect.iscoroutinefunction(sub):
-                    await sub(*args)
+                    self._run_background_task(sub, *args)
                 else:
                     sub(*args)
             except Exception as e:
-                # We should log the exception but not propagate it
-                print(f"Error in event handler: {e}")
+                traceback.print_exc()
+                warnings.warn(f"Synchronous error in handler: {e}", RuntimeWarning)
 
     async def _notify(self, event_type: str, *args: Any) -> None:
         tasks = []
@@ -39,17 +51,17 @@ class AbstractEmitter(ABC):
                 try:
                     pipeline(*args)
                 except Exception as e:
-                    await self._emit("error", e)
+                    self._emit("error", e)
                     raise e
 
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for result in results:
                 if isinstance(result, Exception):
-                    await self._emit("error", result)
+                    self._emit("error", result)
                     raise result
 
-        await self._emit(event_type, *args)
+        self._emit(event_type, *args)
 
     def on(self, event: str, handler: Callable) -> None:
         self._subscribers.setdefault(event, []).append(handler)

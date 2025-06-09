@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, Generic, List
 from unittest.mock import AsyncMock, MagicMock
 
-from cbor_rpc import Pipe, RpcV1, DeferredPromise
+from cbor_rpc import EventPipe, RpcV1, TimedPromise
 from tests.helpers import SimplePipe
 
 
@@ -114,7 +114,7 @@ async def test_wait_next_event_timeout(rpc):
 
 @pytest.mark.asyncio
 async def test_wait_next_event_already_waiting(rpc):
-    rpc._waiters["test_topic"] = DeferredPromise(1000)
+    rpc._waiters["test_topic"] = TimedPromise(1000)
     with pytest.raises(Exception) as exc_info:
         await rpc.wait_next_event("test_topic")
     assert str(exc_info.value) == "Already waiting for event"

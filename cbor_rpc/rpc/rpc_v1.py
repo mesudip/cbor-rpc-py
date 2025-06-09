@@ -2,41 +2,19 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
-from .async_pipe import Pipe
-from .promise import DeferredPromise
 
-
-class RpcClient(ABC):
-    @abstractmethod
-    async def emit(self, topic: str, message: Any) -> None:
-        pass
-
-    @abstractmethod
-    async def call_method(self, method: str, *args: Any) -> Any:
-        pass
-
-    @abstractmethod
-    async def fire_method(self, method: str, *args: Any) -> None:
-        pass
-
-    @abstractmethod
-    def set_timeout(self, milliseconds: int) -> None:
-        pass
-
-
-class RpcAuthorizedClient(RpcClient):
-    @abstractmethod
-    def get_id(self) -> str:
-        pass
+from .rpc_base import RpcClient
+from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.promise import TimedPromise
 
 
 class RpcV1(RpcClient):
-    def __init__(self, pipe: Pipe[Any, Any]):
+    def __init__(self, pipe: EventPipe[Any, Any]):
         self.pipe = pipe
         self._counter = 0
-        self._promises: Dict[int, DeferredPromise] = {}
+        self._promises: Dict[int, TimedPromise] = {}
         self._timeout = 30000
-        self._waiters: Dict[str, DeferredPromise] = {}
+        self._waiters: Dict[str, TimedPromise] = {}
 
         async def resolve_result(result: Any) -> Any:
             """Recursively resolve coroutines or nested coroutines."""
@@ -108,7 +86,7 @@ class RpcV1(RpcClient):
         def timeout_callback():
             self._promises.pop(counter, None)
         
-        promise = DeferredPromise(self._timeout, timeout_callback)
+        promise = TimedPromise(self._timeout, timeout_callback)
         self._promises[counter] = promise
         await self.pipe.write([1, 0, counter, method, list(args)])
         return await promise.promise
@@ -142,7 +120,7 @@ class RpcV1(RpcClient):
         def timeout_callback():
             self._waiters.pop(topic, None)
             
-        waiter = DeferredPromise(
+        waiter = TimedPromise(
             timeout_ms or self._timeout,
             timeout_callback,
             f"Timeout Waiting for Event on: {topic}"
@@ -159,7 +137,7 @@ class RpcV1(RpcClient):
         pass
 
     @staticmethod
-    def make_rpc_v1(pipe: Pipe[Any, Any], id_: str, method_handler: Callable, event_handler: Callable) -> 'RpcV1':
+    def make_rpc_v1(pipe: EventPipe[Any, Any], id_: str, method_handler: Callable, event_handler: Callable) -> 'RpcV1':
         class ConcreteRpcV1(RpcV1):
             def get_id(self) -> str:
                 return id_
@@ -175,7 +153,7 @@ class RpcV1(RpcClient):
         return ConcreteRpcV1(pipe)
 
     @staticmethod
-    def read_only_client(pipe: Pipe[Any, Any]) -> 'RpcV1':
+    def read_only_client(pipe: EventPipe[Any, Any]) -> 'RpcV1':
         def method_handler(method: str, args: List[Any]) -> Any:
             raise Exception("Client Only Implementation")
 

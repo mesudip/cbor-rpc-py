@@ -1,11 +1,11 @@
 from typing import Any, Callable, Optional, Set, TypeVar, Generic
 from abc import ABC, abstractmethod
 import asyncio
-from .emitter import AbstractEmitter
-from .async_pipe import Pipe
+from ..event.emitter import AbstractEmitter
+from .event_pipe import EventPipe
 
 # Generic type variable for pipe types
-P = TypeVar('P', bound=Pipe)
+P = TypeVar('P', bound=EventPipe)
 
 
 class Server(AbstractEmitter, Generic[P]):
@@ -35,6 +35,10 @@ class Server(AbstractEmitter, Generic[P]):
         """Stop the server and clean up resources."""
         pass
 
+    @abstractmethod
+    async def accept(self,pipe:P) -> bool:
+        pass
+
     async def _add_connection(self, pipe: P) -> None:
         """
         Add a new connection and emit a connection event.
@@ -42,15 +46,17 @@ class Server(AbstractEmitter, Generic[P]):
         Args:
             pipe: The pipe representing the connection
         """
+        if not self.accept(pipe):
+            pipe.terminate()
+            return 
         self._connections.add(pipe)
-        
         # Set up cleanup when connection closes
         async def cleanup(*args):
             self._connections.discard(pipe)
         pipe.on("close", cleanup)
         
         # Emit connection event
-        await self._emit("connection", pipe)
+        await self._notify("connection", pipe)
 
     def get_connections(self) -> Set[P]:
         """Get all active connections."""

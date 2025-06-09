@@ -2,8 +2,8 @@ from typing import Any, TypeVar, Generic, Callable, Tuple, Optional
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
-from cbor_rpc.async_pipe import Pipe
-from cbor_rpc.sync_pipe import SyncPipe
+from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.pipe.pipe import Pipe
 import queue
 import threading
 from typing import Union
@@ -18,10 +18,10 @@ class Transformer(Generic[T1, T2]):
     Encodes data when writing and decodes data when reading/emitting events.
     """
     
-    def __init__(self, underlying_pipe: Union[Pipe[Any, Any], SyncPipe[Any, Any]]):
+    def __init__(self, underlying_pipe: Union[EventPipe[Any, Any], Pipe[Any, Any]]):
         self.underlying_pipe = underlying_pipe
         self._closed = False
-        self._is_sync_pipe = isinstance(underlying_pipe, SyncPipe)
+        self._is_sync_pipe = isinstance(underlying_pipe, Pipe)
         
         if not self._is_sync_pipe:
             # For async pipes, set up event handlers
@@ -162,9 +162,9 @@ class Transformer(Generic[T1, T2]):
             A tuple of (transformer1, transformer2)
         """
         if use_sync:
-            pipe1, pipe2 = SyncPipe.create_pair()
-        else:
             pipe1, pipe2 = Pipe.create_pair()
+        else:
+            pipe1, pipe2 = EventPipe.create_pair()
         
         class ConcreteTransformer1(Transformer):
             async def encode(self, data):

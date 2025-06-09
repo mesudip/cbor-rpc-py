@@ -2,7 +2,7 @@ from typing import Any, TypeVar, Generic, Callable, Tuple, Optional
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
-from .emitter import AbstractEmitter
+from ..event.emitter import AbstractEmitter
 import queue
 import threading
 from typing import Union
@@ -13,7 +13,7 @@ T2 = TypeVar('T2')
 
 
 
-class SyncPipe(Generic[T1, T2]):
+class Pipe(Generic[T1, T2]):
     """
     Synchronous pipe uses read/write methods instead of events.
     Explicit read/write is used for writing protocols that have multiple steps.
@@ -23,7 +23,7 @@ class SyncPipe(Generic[T1, T2]):
         self._closed = False
         self._queue: queue.Queue = queue.Queue()
         self._sent_data: queue.Queue = queue.Queue()  # Track data sent to other pipe for size reporting
-        self._connected_pipe: Optional['SyncPipe'] = None
+        self._connected_pipe: Optional['Pipe'] = None
 
     def read(self, timeout: Optional[float] = None) -> Optional[T2]:
         """
@@ -122,15 +122,15 @@ class SyncPipe(Generic[T1, T2]):
         return local_size
     
     @staticmethod
-    def create_pair() -> Tuple['SyncPipe[Any, Any]', 'SyncPipe[Any, Any]']:
+    def create_pair() -> Tuple['Pipe[Any, Any]', 'Pipe[Any, Any]']:
         """
         Create a pair of connected sync pipes for bidirectional communication.
         
         Returns:
             A tuple of (pipe1, pipe2) where data written to pipe1 can be read from pipe2 and vice versa.
         """
-        pipe1 = SyncPipe[Any, Any]()
-        pipe2 = SyncPipe[Any, Any]()
+        pipe1 = Pipe[Any, Any]()
+        pipe2 = Pipe[Any, Any]()
         
         # Connect them bidirectionally
         pipe1._connected_pipe = pipe2

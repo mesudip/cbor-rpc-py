@@ -2,7 +2,7 @@ from typing import Any, TypeVar, Generic, Callable, Tuple, Optional
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
-from .emitter import AbstractEmitter
+from ..event.emitter import AbstractEmitter
 import queue
 import threading
 from typing import Union
@@ -12,7 +12,7 @@ T1 = TypeVar('T1')
 T2 = TypeVar('T2')
 
 
-class Pipe(AbstractEmitter, Generic[T1, T2]):
+class EventPipe(AbstractEmitter, Generic[T1, T2]):
     """
     Async Pipe or simply Pipe are event based way for read/write. 
     You cannot directly read from a Pipe. You have to use a on("data") handler registration.
@@ -26,7 +26,7 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
         pass
 
     @staticmethod
-    def attach(source: 'Pipe[Any, Any]', destination: 'Pipe[Any, Any]') -> None:
+    def attach(source: 'EventPipe[Any, Any]', destination: 'EventPipe[Any, Any]') -> None:
         async def source_to_destination(chunk: Any):
             await destination.write(chunk)
         
@@ -41,14 +41,14 @@ class Pipe(AbstractEmitter, Generic[T1, T2]):
         source.on("close", close_handler)
 
     @staticmethod
-    def create_pair() -> Tuple['Pipe[Any, Any]', 'Pipe[Any, Any]']:
+    def create_pair() -> Tuple['EventPipe[Any, Any]', 'EventPipe[Any, Any]']:
         """
         Create a pair of connected pipes for bidirectional communication.
 
         Returns:
             A tuple of (pipe1, pipe2) where data written to pipe1 is emitted on pipe2 and vice versa.
         """
-        class ConnectedPipe(Pipe[Any, Any]):
+        class ConnectedPipe(EventPipe[Any, Any]):
             def __init__(self):
                 super().__init__()
                 self.connected_pipe: Optional['ConnectedPipe'] = None

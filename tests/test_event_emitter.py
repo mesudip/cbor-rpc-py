@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import Any, Callable
-from cbor_rpc.emitter import AbstractEmitter
+from cbor_rpc.event.emitter import AbstractEmitter
 
 @pytest.mark.asyncio
 async def test_on_and_emit():

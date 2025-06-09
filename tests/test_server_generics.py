@@ -5,10 +5,10 @@ Tests for the generic Server class and its type safety.
 import pytest
 import asyncio
 from typing import Any, Set
-from cbor_rpc import Server, Pipe, TcpServer, TcpPipe
+from cbor_rpc import Server, EventPipe, TcpServer, TcpPipe
 
 
-class MockPipe(Pipe[str, str]):
+class MockPipe(EventPipe[str, str]):
     """A mock pipe for testing."""
     
     def __init__(self, name: str):
@@ -126,7 +126,7 @@ async def test_tcp_server_generic_typing():
         connection_events.append(pipe)
         # Verify the pipe is the correct type
         assert isinstance(pipe, TcpPipe)
-        assert isinstance(pipe, Pipe)
+        assert isinstance(pipe, EventPipe)
     
     tcp_server.on_connection(on_tcp_connection)
     

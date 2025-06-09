@@ -1,9 +1,9 @@
 import pytest
 import asyncio
 from typing import Any, Tuple
-from cbor_rpc import Pipe
+from cbor_rpc import EventPipe
 
-class SimplePipe(Pipe):
+class SimplePipe(EventPipe):
     def __init__(self):
         super().__init__()
         self._closed = False
@@ -28,9 +28,9 @@ def pipe():
 @pytest.mark.asyncio
 async def test_create_pair():
     # Positive case: Creating a pair of async pipes
-    pipe1, pipe2 = Pipe.create_pair()
-    assert isinstance(pipe1, Pipe)
-    assert isinstance(pipe2, Pipe)
+    pipe1, pipe2 = EventPipe.create_pair()
+    assert isinstance(pipe1, EventPipe)
+    assert isinstance(pipe2, EventPipe)
 
 @pytest.mark.asyncio
 async def test_write_success(pipe):
@@ -59,7 +59,7 @@ async def test_pipeline_execution(pipe):
 @pytest.mark.asyncio
 async def test_attach_pipes():
     # Positive case: Attaching two pipes
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
 
     called = False
     async def handler(chunk: Any) -> None:
@@ -73,7 +73,7 @@ async def test_attach_pipes():
 @pytest.mark.asyncio
 async def test_write_after_terminate():
     # Negative case: Writing to a terminated pipe
-    pipe1, _ = Pipe.create_pair()
+    pipe1, _ = EventPipe.create_pair()
     await pipe1.terminate()
 
     result = await pipe1.write("test_chunk")

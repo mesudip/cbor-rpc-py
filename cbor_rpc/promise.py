@@ -2,7 +2,7 @@ from typing import Any, Callable, Optional
 import asyncio
 
 
-class DeferredPromise:
+class TimedPromise:
     def __init__(self, timeout_ms: int, timeout_cb: Optional[Callable[[], None]] = None, 
                  message: str = "Timeout on RPC call"):
         self._timeout_ms = timeout_ms

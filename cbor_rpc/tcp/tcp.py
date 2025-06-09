@@ -1,11 +1,12 @@
+from abc import abstractmethod
 import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
-from cbor_rpc.async_pipe import Pipe
-from cbor_rpc.server_base import Server
+from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.pipe.server_base import Server
 
 
-class TcpPipe(Pipe[bytes, bytes]):
+class TcpPipe(EventPipe[bytes, bytes]):
     """
     A TCP duplex pipe that implements Pipe<bytes, bytes> for network communication.
     Provides both client and server functionality for TCP connections.
@@ -108,22 +109,6 @@ class TcpPipe(Pipe[bytes, bytes]):
         except Exception:
             await server.stop()
             raise
-    
-    @classmethod
-    def from_socket(cls, sock: socket.socket) -> 'TcpPipe':
-        """
-        Create a TcpPipe from an existing socket.
-        
-        Args:
-            sock: An existing connected socket
-            
-        Returns:
-            A TcpPipe instance wrapping the socket
-        """
-        # This will be set up when the connection is established
-        tcp_duplex = cls()
-        tcp_duplex._socket = sock
-        return tcp_duplex
     
     async def connect(self, host: str, port: int, timeout: Optional[float] = None) -> None:
         """
@@ -370,17 +355,11 @@ class TcpServer(Server[TcpPipe]):
         if self._server and self._server.sockets:
             return self._server.sockets[0].getsockname()[:2]
         return ("", 0)
-
-    # Legacy methods for backward compatibility
-    def on_connection(self, handler: Callable[[TcpPipe], None]) -> None:
-        """
-        Set a handler for new connections.
-        
-        Args:
-            handler: A function that takes a TcpPipe as argument
-        """
-        super().on_connection(handler)
     
+    @abstractmethod
+    async def accept(self,pipe:TcpPipe) -> bool:
+        pass
+
     async def close(self) -> None:
         """Legacy method - use stop() instead."""
         await self.stop()

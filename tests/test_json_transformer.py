@@ -3,12 +3,12 @@ import asyncio
 import json
 from typing import Any, Dict, List
 from cbor_rpc import JsonTransformer
-from cbor_rpc import Pipe
+from cbor_rpc import EventPipe
 
 @pytest.mark.asyncio
 async def test_json_transformer_basic_encoding_decoding():
     """Test basic JSON encoding and decoding."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
 
     received_data = []
@@ -84,7 +84,7 @@ async def test_json_transformer_different_data_types():
 @pytest.mark.asyncio
 async def test_json_transformer_encoding_errors():
     """Test JSON transformer encoding error handling."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
     errors = []
     transformer.on("error", lambda err: errors.append(str(err)))
@@ -107,7 +107,7 @@ async def test_json_transformer_encoding_errors():
 @pytest.mark.asyncio
 async def test_json_transformer_decoding_errors():
     """Test JSON transformer decoding error handling."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
     errors = []
     transformer.on("error", lambda err: errors.append(str(err)))
@@ -127,7 +127,7 @@ async def test_json_transformer_decoding_errors():
 @pytest.mark.asyncio
 async def test_json_transformer_string_input():
     """Test JSON transformer with string input (not just bytes)."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
     received_data = []
     transformer.on("data", lambda chunk: received_data.append(chunk))
@@ -142,7 +142,7 @@ async def test_json_transformer_string_input():
 @pytest.mark.asyncio
 async def test_json_transformer_custom_encoding():
     """Test JSON transformer with custom text encoding."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1, encoding='latin1')
     received_data = []
     transformer.on("data", lambda chunk: received_data.append(chunk))
@@ -157,7 +157,7 @@ async def test_json_transformer_custom_encoding():
 @pytest.mark.asyncio
 async def test_json_transformer_termination():
     """Test JSON transformer termination."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
     close_events = []
     transformer.on("close", lambda *args: close_events.append(args))
@@ -217,7 +217,7 @@ async def test_json_transformer_concurrent_operations():
 @pytest.mark.asyncio
 async def test_json_transformer_error_recovery():
     """Test that JSON transformer can recover from errors."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
     transformer = JsonTransformer(pipe1)
     received_data = []
     errors = []

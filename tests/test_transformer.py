@@ -1,9 +1,9 @@
 import pytest
 import asyncio
 from typing import Any, Dict, List
-from cbor_rpc.async_pipe import Pipe
+from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc import Transformer
-from cbor_rpc import SyncPipe
+from cbor_rpc import Pipe
 from cbor_rpc import AbstractEmitter
 
 # Existing tests...
@@ -11,7 +11,7 @@ from cbor_rpc import AbstractEmitter
 @pytest.mark.asyncio
 async def test_async_transformer_basic():
     """Test basic asynchronous transformer functionality."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
 
     class MockTransformer(Transformer[str, str], AbstractEmitter):
         async def encode(self, data: str) -> str:
@@ -41,7 +41,7 @@ async def test_async_transformer_basic():
 @pytest.mark.asyncio
 async def test_sync_transformer_basic():
     """Test basic synchronous transformer functionality."""
-    pipe1, pipe2 = SyncPipe.create_pair()
+    pipe1, pipe2 = Pipe.create_pair()
 
     class MockSyncTransformer(Transformer[str, str]):
         def encode_sync(self, data: str) -> str:
@@ -65,7 +65,7 @@ async def test_sync_transformer_basic():
 @pytest.mark.asyncio
 async def test_transformer_close_propagation():
     """Test close propagation in transformers."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
 
     class MockTransformer(Transformer[str, str]):
         async def encode(self, data: str) -> str:
@@ -90,7 +90,7 @@ async def test_transformer_close_propagation():
 @pytest.mark.asyncio
 async def test_transformer_exception_handling():
     """Test exception handling in transformers."""
-    pipe1, pipe2 = Pipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_pair()
 
     class FaultyTransformer(Transformer[str, str], AbstractEmitter):
         async def encode(self, data: str) -> str:

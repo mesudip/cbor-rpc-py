@@ -1,15 +1,15 @@
 import json
 from typing import Any, Union
-from .emitter import AbstractEmitter
-from .transformer import Transformer
-from .async_pipe import  Pipe
+from ..event.emitter import AbstractEmitter
+from . import Transformer
+from ..pipe.event_pipe import  EventPipe
 
 class JsonTransformer(AbstractEmitter, Transformer[Any, Any]):
     """
     A transformer that encodes Python objects to JSON strings and decodes JSON strings back to Python objects.
     """
 
-    def __init__(self, underlying_pipe: Pipe[Any, Any], encoding: str = 'utf-8'):
+    def __init__(self, underlying_pipe: EventPipe[Any, Any], encoding: str = 'utf-8'):
         """
         Initialize the JSON transformer.
 
@@ -76,7 +76,7 @@ class JsonTransformer(AbstractEmitter, Transformer[Any, Any]):
         Returns:
             A tuple of (transformer1, transformer2)
         """
-        pipe1, pipe2 = Pipe.create_pair()
+        pipe1, pipe2 = EventPipe.create_pair()
         transformer1 = cls(pipe1, encoding)
         transformer2 = cls(pipe2, encoding)
         return transformer1, transformer2
