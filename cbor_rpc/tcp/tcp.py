@@ -1,8 +1,8 @@
 import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
-from .async_pipe import Pipe
-from .server_base import Server
+from cbor_rpc.async_pipe import Pipe
+from cbor_rpc.server_base import Server
 
 
 class TcpPipe(Pipe[bytes, bytes]):

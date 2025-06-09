@@ -7,7 +7,7 @@ from .async_pipe import Pipe
 from .transformer import Transformer
 from .promise import DeferredPromise
 from .client import RpcClient, RpcAuthorizedClient, RpcV1
-from .server import RpcServer, RpcV1Server
+from .rpc_server import RpcServer, RpcV1Server
 from .server_base import Server
 from .tcp import TcpPipe, TcpServer
 from .json_transformer import JsonTransformer
