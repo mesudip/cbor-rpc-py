@@ -64,19 +64,3 @@ class JsonTransformer(Transformer[Any, Any]):
             raise TypeError(f"Expected bytes or str, got {type(data)}")
 
         return json.loads(json_str)
-
-    @classmethod
-    def create_pair(cls, encoding: str = 'utf-8') -> tuple['JsonTransformer', 'JsonTransformer']:
-        """
-        Create a pair of connected JSON transformers.
-
-        Args:
-            encoding: Text encoding to use
-
-        Returns:
-            A tuple of (transformer1, transformer2)
-        """
-        pipe1, pipe2 = EventPipe.create_pair()
-        transformer1 = cls(pipe1, encoding)
-        transformer2 = cls(pipe2, encoding)
-        return transformer1, transformer2
