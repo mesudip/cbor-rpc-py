@@ -1,0 +1,2 @@
+class NeedsMoreDataException(Exception):
+    pass

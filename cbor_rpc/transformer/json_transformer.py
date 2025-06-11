@@ -4,7 +4,7 @@ from ..event.emitter import AbstractEmitter
 from . import Transformer
 from ..pipe.event_pipe import  EventPipe
 
-class JsonTransformer(AbstractEmitter, Transformer[Any, Any]):
+class JsonTransformer(Transformer[Any, Any]):
     """
     A transformer that encodes Python objects to JSON strings and decodes JSON strings back to Python objects.
     """

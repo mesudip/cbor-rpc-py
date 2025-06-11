@@ -6,8 +6,9 @@ from .event.emitter import AbstractEmitter
 from .pipe.event_pipe import EventPipe
 from .transformer import Transformer
 from .promise import TimedPromise
-from .rpc.rpc_base import RpcClient, RpcAuthorizedClient, RpcV1
-from .rpc.rpc_server import RpcServer, RpcV1Server
+from .rpc.rpc_base import RpcClient, RpcAuthorizedClient,RpcServer
+from .rpc.rpc_v1 import RpcV1
+from .rpc.rpc_server import RpcV1Server
 from .pipe.server_base import Server
 from .tcp import TcpPipe, TcpServer
 from .transformer.json_transformer import JsonTransformer

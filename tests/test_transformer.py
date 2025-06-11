@@ -44,10 +44,10 @@ async def test_sync_transformer_basic():
     pipe1, pipe2 = Pipe.create_pair()
 
     class MockSyncTransformer(Transformer[str, str]):
-        def encode_sync(self, data: str) -> str:
+        def encode(self, data: str) -> str:
             return f"encoded_{data}"
 
-        def decode_sync(self, data: Any) -> str:
+        def decode(self, data: Any) -> str:
             if isinstance(data, str) and data.startswith("encoded_"):
                 return data[8:]  # Remove "encoded_" prefix
             raise ValueError("Invalid format")

@@ -19,7 +19,7 @@ class SimplePipe(EventPipe):
         if self._closed:
             return
         self._closed = True
-        await self._emit("close", *args)
+        self._emit("close", *args)
 
 @pytest.fixture
 def pipe():
@@ -57,7 +57,7 @@ async def test_pipeline_execution(pipe):
     assert called is True
 
 @pytest.mark.asyncio
-async def test_attach_pipes():
+async def test_pipe_pair():
     # Positive case: Attaching two pipes
     pipe1, pipe2 = EventPipe.create_pair()
 
@@ -66,8 +66,9 @@ async def test_attach_pipes():
         nonlocal called
         called = True
 
-    pipe2.on("data", handler)
+    pipe2.pipeline("data", handler)
     await pipe1.write("test_chunk")
+    
     assert called is True
 
 @pytest.mark.asyncio

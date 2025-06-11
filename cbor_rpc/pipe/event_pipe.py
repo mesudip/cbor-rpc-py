@@ -3,9 +3,6 @@ from abc import ABC, abstractmethod
 import asyncio
 import inspect
 from ..event.emitter import AbstractEmitter
-import queue
-import threading
-from typing import Union
 
 # Generic type variables
 T1 = TypeVar('T1')
@@ -14,8 +11,8 @@ T2 = TypeVar('T2')
 
 class EventPipe(AbstractEmitter, Generic[T1, T2]):
     """
-    Async Pipe or simply Pipe are event based way for read/write. 
-    You cannot directly read from a Pipe. You have to use a on("data") handler registration.
+    Event Pipe or are event based way for read/write.
+    You cannot directly read from a Pipe. You have to use a pipeline("data") to register a function to read data.
     """
     @abstractmethod
     async def write(self, chunk: T1) -> bool:
@@ -24,21 +21,6 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
     @abstractmethod
     async def terminate(self, *args: Any) -> None:
         pass
-
-    @staticmethod
-    def attach(source: 'EventPipe[Any, Any]', destination: 'EventPipe[Any, Any]') -> None:
-        async def source_to_destination(chunk: Any):
-            await destination.write(chunk)
-        
-        async def destination_to_source(chunk: Any):
-            await source.write(chunk)
-        
-        async def close_handler(*args: Any):
-            await destination._emit("close", *args)
-        
-        source.on("data", source_to_destination)
-        destination.on("data", destination_to_source)
-        source.on("close", close_handler)
 
     @staticmethod
     def create_pair() -> Tuple['EventPipe[Any, Any]', 'EventPipe[Any, Any]']:
@@ -59,60 +41,21 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
                 other.connected_pipe = self
 
             async def write(self, chunk: Any) -> bool:
-                if self._closed:
+                if self._closed or not self.connected_pipe or self.connected_pipe._closed:
                     return False
-
-                # Forward to connected pipe
-                if self.connected_pipe and not self.connected_pipe._closed:
-                    await self.connected_pipe._emit("data", chunk)
-
+                await self.connected_pipe._notify("data", chunk)
                 return True
 
             async def terminate(self, *args: Any) -> None:
                 if self._closed:
                     return
-
                 self._closed = True
-                await self._emit("close", *args)
-
-                # Notify connected pipe
+                self._emit("close", *args)
                 if self.connected_pipe and not self.connected_pipe._closed:
-                    await self.connected_pipe._emit("close", *args)
-
-            async def read(self, timeout: Optional[float] = None) -> Optional[Any]:
-                """Read data from the pipe with a timeout.
-
-                Args:
-                    timeout: Maximum time to wait for data (None = no timeout)
-
-                Returns:
-                    Data from the pipe or None if timeout/closed
-                """
-                if self._closed:
-                    return None
-
-                # Wait for data event or timeout
-                read_future = asyncio.Future()
-
-                def handle_data(chunk: Any):
-                    read_future.set_result(chunk)
-                    self.off("data", handle_data)
-
-                self.on("data", handle_data)
-
-                try:
-                    if timeout is not None and timeout > 0:
-                        await asyncio.wait_for(read_future, timeout)
-                    else:
-                        # Wait indefinitely for data
-                        await read_future
-                    return read_future.result()
-                except asyncio.TimeoutError:
-                    return None
+                    self.connected_pipe._emit("close", *args)
 
         pipe1 = ConnectedPipe()
         pipe2 = ConnectedPipe()
         pipe1.connect_to(pipe2)
 
         return pipe1, pipe2
-

@@ -29,7 +29,7 @@ async def test_on_and_emit():
     emitter.on("test", async_handler2)
 
     # Emit event
-    await emitter._emit("test", "event1")
+    emitter._emit("test", "event1")
     await asyncio.sleep(0.02)  # Allow async handlers to complete
 
     # Verify all subscribers ran (order may vary due to concurrency)
@@ -117,7 +117,7 @@ async def test_unsubscribe():
     emitter.unsubscribe("test", async_handler1)
 
     # Emit event
-    await emitter._emit("test", "event3")
+    emitter._emit("test", "event3")
     await asyncio.sleep(0.02)  # Allow async handlers to complete (none in this case)
 
     # Verify only remaining subscriber ran
@@ -145,7 +145,7 @@ async def test_replace_on_handler():
     emitter.replace_on_handler("test", async_handler1)
 
     # Emit event
-    await emitter._emit("test", "event4")
+    emitter._emit("test", "event4")
     await asyncio.sleep(0.02)  # Allow async handler to complete
 
     # Verify only the replaced handler ran
@@ -228,7 +228,7 @@ async def test_multiple_event_types():
 
     # Test _emit for event_a
     events.clear()
-    await emitter._emit("event_a", "data_a")
+    emitter._emit("event_a", "data_a")
     await asyncio.sleep(0.02)  # Allow async handlers to complete
     expected = [f"async_handler_a_data_a", f"sync_handler_a_data_a"]
     assert sorted(events) == sorted(expected), f"Expected {expected}, got {events}"
@@ -248,7 +248,7 @@ async def test_multiple_event_types():
 
     # Test _emit for event_b
     events.clear()
-    await emitter._emit("event_b", "data_b")
+    emitter._emit("event_b", "data_b")
     await asyncio.sleep(0.02)  # Allow async handlers to complete
     expected = [f"async_handler_b_data_b", f"sync_handler_b_data_b"]
     assert sorted(events) == sorted(expected), f"Expected {expected}, got {events}"
@@ -293,7 +293,7 @@ async def test_background_task_failure():
     emitter.on("test", sync_handler)
 
     # Emit event
-    await emitter._emit("test", "event6")
+    emitter._emit("test", "event6")
     await asyncio.sleep(0.02)  # Allow async handlers to complete
 
     # Verify all subscribers ran despite the failure
@@ -332,7 +332,7 @@ async def test_slow_emit_does_not_block_notify():
     emitter.pipeline("test_notify", fast_notify_pipeline)
 
     # Start _emit but don't wait for it to finish
-    asyncio.create_task(emitter._emit("test_emit", "data_emit"))
+    emitter._emit("test_emit", "data_emit")
 
     # Wait briefly before triggering _notify
     await asyncio.sleep(0.1)
