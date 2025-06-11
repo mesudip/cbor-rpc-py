@@ -12,7 +12,7 @@ class JsonTransformer(Transformer[Any, Any]):
         self.encoding = encoding
 
     def encode(self, data: Any) -> bytes:
-        json_str = json.dumps(data, ensure_ascii=False)
+        json_str = json.dumps(data, ensure_ascii=(self.encoding == 'ascii'))
         return json_str.encode(self.encoding)
 
     def decode(self, data: Union[bytes, str, None]) -> Any:

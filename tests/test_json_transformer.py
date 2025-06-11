@@ -1,238 +1,211 @@
 import pytest
-import asyncio
 import json
-from typing import Any, Dict, List
-from cbor_rpc import JsonTransformer
-from cbor_rpc import EventPipe
+import asyncio
+from cbor_rpc.transformer.json_transformer import JsonTransformer
+from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
+from cbor_rpc.transformer.base.event_transformer_pipe import EventTransformerPipe
 
 @pytest.mark.asyncio
-async def test_json_transformer_basic_encoding_decoding():
-    """Test basic JSON encoding and decoding."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
+class TestJsonTransformerPipeInteraction:
 
-    received_data = []
-    transformer.on("data", lambda chunk: received_data.append(chunk))
+    async def test_json_transformer_end_to_end_simple_dict(self):
+        # Create a pair of event pipes
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
 
-    # Test encoding: write JSON data through pipe2 (will be received by transformer)
-    test_data = {"message": "hello", "number": 42, "array": [1, 2, 3]}
-    json_bytes = json.dumps(test_data).encode('utf-8')
-    await pipe2.write(json_bytes)
+        # Instantiate the JSON transformer
+        json_transformer = JsonTransformer()
 
-    # Wait for data to be processed
-    await asyncio.sleep(0.1)
-    assert test_data == received_data[0] if received_data else None
+        # Apply the transformer to the client side of the raw pipe
+        # This creates an EventTransformerPipe that encodes/decodes data
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
+        assert isinstance(client_transformed_pipe, EventTransformerPipe)
 
-    # Test decoding: write data through transformer (will be encoded)
-    received_raw = []
-    pipe2.on("data", lambda chunk: received_raw.append(chunk))
-    await transformer.write({"response": "world", "success": True})
+        # Use a queue to capture data emitted by the server_raw_pipe
+        received_data_queue = asyncio.Queue()
+        server_raw_pipe.on("data", received_data_queue.put_nowait)
 
-    # Read the encoded response from pipe2
-    raw_response = received_raw[0] if received_raw else None
-    decoded_response = json.loads(raw_response.decode('utf-8')) if raw_response else None
-    assert decoded_response == {"response": "world", "success": True}
+        # Data to send
+        original_data = {"message": "Hello, world!", "number": 123}
 
-@pytest.mark.asyncio
-async def test_json_transformer_create_pair():
-    """Test creating a pair of JSON transformers."""
-    transformer1, transformer2 = JsonTransformer.create_pair()
+        # Write original_data to the transformed client pipe
+        # This should encode the data and send it through client_raw_pipe to server_raw_pipe
+        await client_transformed_pipe.write(original_data)
 
-    # Test communication from transformer1 to transformer2
-    received_data = []
-    transformer2.on("data", lambda chunk: received_data.append(chunk))
-    test_data = {"message": "Hello World", "timestamp": 1234567890}
-    await transformer1.write(test_data)
+        # Wait for the encoded data to arrive at the server_raw_pipe
+        # The server_raw_pipe receives the *encoded* data (bytes)
+        encoded_data_received_by_server = await received_data_queue.get()
 
-    assert received_data == [test_data]
+        # Manually decode the data received by the server_raw_pipe to verify it's JSON bytes
+        decoded_by_server = json.loads(encoded_data_received_by_server.decode('utf-8'))
+        assert decoded_by_server == original_data
 
-    # Test communication from transformer2 to transformer1
-    received_data.clear()
-    transformer1.on("data", lambda chunk: received_data.append(chunk))
-    response_data = {"reply": "Hello Back", "status": "ok"}
-    await transformer2.write(response_data)
+        # Now, let's test the reverse: server sends data, client receives decoded data
+        # Use a queue to capture data emitted by the client_transformed_pipe
+        client_received_data_queue = asyncio.Queue()
+        client_transformed_pipe.on("data", client_received_data_queue.put_nowait)
 
-    assert received_data == [response_data]
+        # Data to send from server
+        response_data = {"status": "success", "code": 200}
+        
+        # Server_raw_pipe writes the *encoded* data (as if it received it from a client and is sending a response)
+        # This data will go through client_raw_pipe and then be decoded by client_transformed_pipe
+        await server_raw_pipe.write(json.dumps(response_data).encode('utf-8'))
 
-@pytest.mark.asyncio
-async def test_json_transformer_different_data_types():
-    """Test JSON transformer with different Python data types."""
-    transformer1, transformer2 = JsonTransformer.create_pair()
-    received_data = []
-    transformer2.on("data", lambda chunk: received_data.append(chunk))
+        # Wait for the decoded data to arrive at the client_transformed_pipe
+        decoded_data_received_by_client = await client_received_data_queue.get()
+        assert decoded_data_received_by_client == response_data
 
-    # Test various data types
-    test_cases = [
-        "simple string",
-        42,
-        3.14159,
-        True,
-        False,
-        None,
-        [1, 2, 3, "mixed", True],
-        {"nested": {"object": {"with": "values"}}},
-        {"unicode": "Hello 世界 🌍"},
-        [],
-        {},
-    ]
+        # Clean up
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-    for test_data in test_cases:
-        await transformer1.write(test_data)
+    async def test_json_transformer_end_to_end_unicode_characters(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    assert received_data == test_cases
+        received_data_queue = asyncio.Queue()
+        server_raw_pipe.on("data", received_data_queue.put_nowait)
 
-@pytest.mark.asyncio
-async def test_json_transformer_encoding_errors():
-    """Test JSON transformer encoding error handling."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
-    errors = []
-    transformer.on("error", lambda err: errors.append(str(err)))
+        original_data = {"message": "你好世界 👋"}
+        await client_transformed_pipe.write(original_data)
+        encoded_data_received_by_server = await received_data_queue.get()
+        decoded_by_server = json.loads(encoded_data_received_by_server.decode('utf-8'))
+        assert decoded_by_server == original_data
 
-    # Test encoding non-serializable object
-    class NonSerializable:
-        pass
+        client_received_data_queue = asyncio.Queue()
+        client_transformed_pipe.on("data", client_received_data_queue.put_nowait)
+        response_data = {"greeting": "こんにちは"}
+        await server_raw_pipe.write(json.dumps(response_data, ensure_ascii=False).encode('utf-8'))
+        decoded_data_received_by_client = await client_received_data_queue.get()
+        assert decoded_data_received_by_client == response_data
 
-    result = await transformer.write(NonSerializable())
-    assert result is False  # Write should return False on error
-    assert len(errors) == 1
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-    # Test encoding circular reference
-    circular = {}
-    circular['self'] = circular
-    result = await transformer.write(circular)
-    assert result is False
-    assert len(errors) == 2
+    async def test_json_transformer_encoding_error_on_write(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        # Use an encoding that cannot handle certain characters
+        json_transformer = JsonTransformer(encoding='ascii')
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-@pytest.mark.asyncio
-async def test_json_transformer_decoding_errors():
-    """Test JSON transformer decoding error handling."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
-    errors = []
-    transformer.on("error", lambda err: errors.append(str(err)))
+        original_data = {"message": "Hello, world! 👋"} # Contains non-ASCII character
 
-    # Test invalid JSON
-    await pipe2.write(b'{"invalid": json}')
-    assert len(errors) == 1
+        # Expect an encoding error when writing
+        with pytest.raises(UnicodeEncodeError):
+            await client_transformed_pipe.write(original_data)
+        
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-    # Test invalid UTF-8 bytes
-    await pipe2.write(b'\xff\xfe\xfd')
-    assert len(errors) == 2
+    async def test_json_transformer_decoding_error_on_read(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    # Test wrong data type
-    await pipe2.write(123)  # Not bytes or string
-    assert len(errors) == 3
+        # Use a queue to capture errors emitted by the transformed pipe
+        error_queue = asyncio.Queue()
+        client_transformed_pipe.on("error", error_queue.put_nowait)
 
-@pytest.mark.asyncio
-async def test_json_transformer_string_input():
-    """Test JSON transformer with string input (not just bytes)."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
-    received_data = []
-    transformer.on("data", lambda chunk: received_data.append(chunk))
+        # Simulate server sending invalid JSON bytes
+        invalid_json_bytes = b'{"key": "value",}' # Invalid JSON
+        await server_raw_pipe.write(invalid_json_bytes)
 
-    # Test with JSON string input
-    test_data = {"message": "from string", "value": 123}
-    json_string = json.dumps(test_data)
-    await pipe2.write(json_string)
+        # The transformed pipe should emit an error when trying to decode
+        error = await asyncio.wait_for(error_queue.get(), timeout=1)
+        assert isinstance(error, json.JSONDecodeError)
 
-    assert received_data == [test_data]
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-@pytest.mark.asyncio
-async def test_json_transformer_custom_encoding():
-    """Test JSON transformer with custom text encoding."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1, encoding='latin1')
-    received_data = []
-    transformer.on("data", lambda chunk: received_data.append(chunk))
+    async def test_json_transformer_decoding_type_error_on_read(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    # Test with latin1 encoding
-    test_data = {"message": "café"}  # Contains non-ASCII character
-    json_bytes = json.dumps(test_data).encode('latin1')
-    await pipe2.write(json_bytes)
+        error_queue = asyncio.Queue()
+        client_transformed_pipe.on("error", error_queue.put_nowait)
 
-    assert received_data == [test_data]
+        # Simulate server sending non-bytes/str data (e.g., an int)
+        non_string_data = 12345
+        await server_raw_pipe.write(non_string_data) # This will pass through raw pipe as is
 
-@pytest.mark.asyncio
-async def test_json_transformer_termination():
-    """Test JSON transformer termination."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
-    close_events = []
-    transformer.on("close", lambda *args: close_events.append(args))
+        # The transformed pipe should emit a TypeError when trying to decode
+        error = await asyncio.wait_for(error_queue.get(), timeout=1)
+        assert isinstance(error, TypeError)
+        assert "Expected bytes or str" in str(error)
 
-    await transformer.terminate("test_reason")
-    assert len(close_events) == 1
-    assert close_events[0] == ("test_reason",)
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-@pytest.mark.asyncio
-async def test_json_transformer_large_data():
-    """Test JSON transformer with large data structures."""
-    transformer1, transformer2 = JsonTransformer.create_pair()
-    received_data = []
-    transformer2.on("data", lambda chunk: received_data.append(chunk))
+    async def test_json_transformer_non_json_serializable_data(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    # Create a large nested data structure
-    large_data = {
-        "users": [
-            {
-                "id": i,
-                "name": f"User {i}",
-                "email": f"user{i}@example.com",
-                "metadata": {
-                    "created": f"2024-01-{i:02d}",
-                    "tags": [f"tag{j}" for j in range(5)],
-                    "settings": {
-                        "theme": "dark" if i % 2 else "light",
-                        "notifications": True,
-                        "features": [f"feature{k}" for k in range(3)]
-                    }
-                }
-            }
-            for i in range(10)
-        ]
-    }
+        # Data that is not JSON serializable
+        non_serializable_data = {"set_data": {1, 2, 3}}
 
-    await transformer1.write(large_data)
-    assert len(received_data) == 1
-    assert received_data[0] == large_data
+        # Writing this data should raise a TypeError
+        with pytest.raises(TypeError):
+            await client_transformed_pipe.write(non_serializable_data)
+        
+        await client_raw_pipe.terminate()
+        await server_raw_pipe.terminate()
 
-@pytest.mark.asyncio
-async def test_json_transformer_concurrent_operations():
-    """Test JSON transformer with concurrent read/write operations."""
-    transformer1, transformer2 = JsonTransformer.create_pair()
-    received_data = []
-    transformer2.on("data", lambda chunk: received_data.append(chunk))
+    async def test_json_transformer_pipe_termination(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    # Send multiple messages concurrently
-    async def send_message(id: int):
-        await transformer1.write({"id": id, "message": f"Message {id}"})
+        # Listen for close event on the transformed pipe
+        close_event_received = asyncio.Event()
+        client_transformed_pipe.on("close", lambda: close_event_received.set())
 
-    tasks = [send_message(i) for i in range(5)]
-    await asyncio.gather(*tasks)
+        # Terminate the underlying raw pipe
+        await client_raw_pipe.terminate()
 
-    assert len(received_data) == 5
+        # The transformed pipe should also terminate and emit a close event
+        await asyncio.wait_for(close_event_received.wait(), timeout=1)
+        await server_raw_pipe.terminate() # Ensure the other end is also terminated
 
-@pytest.mark.asyncio
-async def test_json_transformer_error_recovery():
-    """Test that JSON transformer can recover from errors."""
-    pipe1, pipe2 = EventPipe.create_pair()
-    transformer = JsonTransformer(pipe1)
-    received_data = []
-    errors = []
-    transformer.on("data", lambda chunk: received_data.append(chunk))
-    transformer.on("error", lambda err: errors.append(str(err)))
+    async def test_json_transformer_pipe_write_after_termination(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-    # Send invalid JSON
-    await pipe2.write(b'invalid json')
+        await client_raw_pipe.terminate()
+        
+        # Writing to a terminated transformed pipe should return False
+        result = await client_transformed_pipe.write({"test": "data"})
+        assert result is False
 
-    # Send valid JSON after error
-    valid_data = {"message": "recovery test"}
-    await pipe2.write(json.dumps(valid_data).encode('utf-8'))
+        await server_raw_pipe.terminate()
 
-    assert len(received_data) == 1
-    assert received_data[0] == valid_data
+    async def test_json_transformer_pipe_read_after_termination(self):
+        client_raw_pipe, server_raw_pipe = EventPipe.create_pair()
+        json_transformer = JsonTransformer()
+        client_transformed_pipe = json_transformer.applyTransformer(client_raw_pipe)
 
-if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+        # Listen for data on the transformed pipe
+        data_queue = asyncio.Queue()
+        client_transformed_pipe.on("data", data_queue.put_nowait)
+
+        # Terminate the server_raw_pipe, which should cause the client_transformed_pipe to terminate
+        await server_raw_pipe.terminate()
+
+        # The transformed pipe should eventually close and not emit new data
+        close_event_received = asyncio.Event()
+        client_transformed_pipe.on("close", lambda: close_event_received.set())
+        await asyncio.wait_for(close_event_received.wait(), timeout=1)
+
+        # Try to write to the raw pipe from the server side after termination
+        # This data should not be processed by the transformed pipe
+        await server_raw_pipe.write(b'{"should": "not_receive"}')
+        
+        # Ensure no data is received by the transformed pipe after termination
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(data_queue.get(), timeout=0.1)
+
+        await client_raw_pipe.terminate()

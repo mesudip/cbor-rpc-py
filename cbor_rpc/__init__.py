@@ -2,17 +2,12 @@
 CBOR-RPC: An async-compatible CBOR-based RPC system
 """
 
-from .event.emitter import AbstractEmitter
-from .pipe.event_pipe import EventPipe
-from .transformer import Transformer
+from .event import AbstractEmitter
+from .pipe import EventPipe,Pipe
 from .timed_promise import TimedPromise
-from .rpc.rpc_base import RpcClient, RpcAuthorizedClient,RpcServer
-from .rpc.rpc_v1 import RpcV1
-from .rpc.rpc_server import RpcV1Server
-from .rpc.server_base import Server
+from .rpc import RpcClient, RpcAuthorizedClient,RpcServer,RpcV1,RpcV1Server,Server
 from .tcp import TcpPipe, TcpServer
-from .transformer.json_transformer import JsonTransformer
-from .pipe.pipe import Pipe
+from .transformer import JsonTransformer,Transformer
 
 __all__ = [
     # Promise

@@ -1,2 +1,2 @@
 from .transformer_base import Transformer,AsyncTransformer
-from base_exception import NeedsMoreDataException
+from .base_exception import NeedsMoreDataException
