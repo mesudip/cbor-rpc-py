@@ -1,58 +1,21 @@
 import json
 from typing import Any, Union
-from ..event.emitter import AbstractEmitter
-from . import Transformer
-from ..pipe.event_pipe import  EventPipe
+from .base import Transformer
 
 class JsonTransformer(Transformer[Any, Any]):
     """
     A transformer that encodes Python objects to JSON strings and decodes JSON strings back to Python objects.
     """
 
-    def __init__(self, underlying_pipe: EventPipe[Any, Any], encoding: str = 'utf-8'):
-        """
-        Initialize the JSON transformer.
-
-        Args:
-            underlying_pipe: The underlying pipe to transform
-            encoding: Text encoding to use (default: 'utf-8')
-        """
-        AbstractEmitter.__init__(self)
-        Transformer.__init__(self, underlying_pipe)
+    def __init__(self, encoding: str = 'utf-8'):
+        super().__init__()
         self.encoding = encoding
 
-    async def encode(self, data: Any) -> bytes:
-        """
-        Encode Python object to JSON bytes.
-
-        Args:
-            data: Python object to encode
-
-        Returns:
-            JSON-encoded bytes
-
-        Raises:
-            TypeError: If data is not JSON serializable
-            UnicodeEncodeError: If encoding fails
-        """
-        json_str = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+    def encode(self, data: Any) -> bytes:
+        json_str = json.dumps(data, ensure_ascii=False)
         return json_str.encode(self.encoding)
 
-    async def decode(self, data: Union[bytes, str, None]) -> Any:
-        """
-        Decode JSON bytes/string to Python object.
-
-        Args:
-            data: JSON bytes or string to decode
-
-        Returns:
-            Decoded Python object
-
-        Raises:
-            json.JSONDecodeError: If data is not valid JSON
-            UnicodeDecodeError: If bytes cannot be decoded
-            TypeError: If data is None or of invalid type
-        """
+    def decode(self, data: Union[bytes, str, None]) -> Any:
         if data is None:
             raise TypeError("Expected bytes or str, got None")
 

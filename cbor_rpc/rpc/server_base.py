@@ -2,7 +2,7 @@ from typing import Any, Callable, Optional, Set, TypeVar, Generic
 from abc import ABC, abstractmethod
 import asyncio
 from ..event.emitter import AbstractEmitter
-from .event_pipe import EventPipe
+from ..pipe import EventPipe
 
 # Generic type variable for pipe types
 P = TypeVar('P', bound=EventPipe)

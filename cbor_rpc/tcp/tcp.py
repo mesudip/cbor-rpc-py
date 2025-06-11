@@ -3,7 +3,7 @@ import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
 from cbor_rpc.pipe.event_pipe import EventPipe
-from cbor_rpc.pipe.server_base import Server
+from cbor_rpc.rpc.server_base import Server
 
 
 class TcpPipe(EventPipe[bytes, bytes]):

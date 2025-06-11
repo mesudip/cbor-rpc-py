@@ -2,7 +2,7 @@ from typing import Any, Awaitable, Optional, TypeVar, Callable
 from typing import TYPE_CHECKING
 import time
 
-from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
+from .base_exception import NeedsMoreDataException
 if TYPE_CHECKING:
     from .transformer_base import Transformer
 from cbor_rpc.pipe.pipe import Pipe

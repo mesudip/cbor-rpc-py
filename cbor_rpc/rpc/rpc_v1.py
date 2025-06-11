@@ -5,7 +5,7 @@ import inspect
 
 from .rpc_base import RpcClient
 from cbor_rpc.pipe.event_pipe import EventPipe
-from cbor_rpc.promise import TimedPromise
+from cbor_rpc.timed_promise import TimedPromise
 
 
 class RpcV1(RpcClient):

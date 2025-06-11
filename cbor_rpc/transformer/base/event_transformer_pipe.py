@@ -4,7 +4,7 @@ if TYPE_CHECKING:
     from .transformer_base import Transformer
 from typing import Any, Awaitable, Callable, TypeVar
 
-from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.pipe import EventPipe
 
 T1 = TypeVar("T1")  # Output type after decoding
 T2 = TypeVar("T2")  # Input type before decoding (pipe input/output type)

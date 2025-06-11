@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import inspect
 from ..pipe.event_pipe import EventPipe
-from ..promise import TimedPromise
+from ..timed_promise import TimedPromise
 
 
 class RpcClient(ABC):

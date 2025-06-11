@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
 
-from cbor_rpc.pipe.server_base import Server
+from cbor_rpc.rpc.server_base import Server
 from .rpc_base import RpcClient, RpcAuthorizedClient, RpcServer
 from .rpc_v1 import RpcV1
 from cbor_rpc.pipe.event_pipe import EventPipe
