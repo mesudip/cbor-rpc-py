@@ -51,3 +51,6 @@ class TimedPromise:
             self._future.set_exception(Exception(error_data))
             if self._timeout_cb:
                 self._timeout_cb()
+
+    def __await__(self):
+        return self._future.__await__()

@@ -92,10 +92,17 @@ class TestJsonTransformerPipeInteraction:
 
         original_data = {"message": "Hello, world! 👋"} # Contains non-ASCII character
 
-        # Expect an encoding error when writing
-        with pytest.raises(UnicodeEncodeError):
-            await client_transformed_pipe.write(original_data)
+        # Use a queue to capture errors emitted by the transformed pipe
+        error_queue = asyncio.Queue()
+        client_transformed_pipe.on("error", error_queue.put_nowait)
+
+        # Writing this data should cause an encoding error to be emitted
+        await client_transformed_pipe.write(original_data)
         
+        # Assert that a UnicodeEncodeError is received
+        error = await asyncio.wait_for(error_queue.get(), timeout=1)
+        assert isinstance(error, UnicodeEncodeError)
+
         await client_raw_pipe.terminate()
         await server_raw_pipe.terminate()
 
@@ -147,10 +154,17 @@ class TestJsonTransformerPipeInteraction:
         # Data that is not JSON serializable
         non_serializable_data = {"set_data": {1, 2, 3}}
 
-        # Writing this data should raise a TypeError
-        with pytest.raises(TypeError):
-            await client_transformed_pipe.write(non_serializable_data)
+        # Use a queue to capture errors emitted by the transformed pipe
+        error_queue = asyncio.Queue()
+        client_transformed_pipe.on("error", error_queue.put_nowait)
+
+        # Writing this data should cause a TypeError to be emitted
+        await client_transformed_pipe.write(non_serializable_data)
         
+        # Assert that a TypeError is received
+        error = await asyncio.wait_for(error_queue.get(), timeout=1)
+        assert isinstance(error, TypeError)
+
         await client_raw_pipe.terminate()
         await server_raw_pipe.terminate()
 
@@ -190,14 +204,15 @@ class TestJsonTransformerPipeInteraction:
 
         # Listen for data on the transformed pipe
         data_queue = asyncio.Queue()
-        client_transformed_pipe.on("data", data_queue.put_nowait)
+        client_transformed_pipe.pipeline("data", data_queue.put_nowait)
 
         # Terminate the server_raw_pipe, which should cause the client_transformed_pipe to terminate
-        await server_raw_pipe.terminate()
 
         # The transformed pipe should eventually close and not emit new data
         close_event_received = asyncio.Event()
         client_transformed_pipe.on("close", lambda: close_event_received.set())
+
+        await server_raw_pipe.terminate()
         await asyncio.wait_for(close_event_received.wait(), timeout=1)
 
         # Try to write to the raw pipe from the server side after termination

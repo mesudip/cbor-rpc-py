@@ -12,7 +12,7 @@ T2 = TypeVar('T2')
 class EventPipe(AbstractEmitter, Generic[T1, T2]):
     """
     Event Pipe or are event based way for read/write.
-    You cannot directly read from a Pipe. You have to use a pipeline("data") to register a function to read data.
+    You cannot directly read from a Pipe. You have to use a pipeline("data") to register one or more functions to read data.
     """
     @abstractmethod
     async def write(self, chunk: T1) -> bool:

@@ -166,16 +166,16 @@ class TcpPipe(EventPipe[bytes, bytes]):
                         break
                     
                     # Emit data event
-                    await self._emit("data", data)
+                    self._emit("data", data)
                     
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    await self._emit("error", e)
+                    self._emit("error", e)
                     break
                     
         except Exception as e:
-            await self._emit("error", e)
+            self._emit("error", e)
         finally:
             if not self._closed:
                 await self._close_connection()
@@ -248,7 +248,7 @@ class TcpPipe(EventPipe[bytes, bytes]):
                 pass  # Ignore errors during cleanup
 
         # Emit close event
-        await self._emit("close", *args)
+        self._emit("close", *args)
     
     def is_connected(self) -> bool:
         """Check if the TCP connection is active."""

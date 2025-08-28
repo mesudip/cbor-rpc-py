@@ -41,8 +41,8 @@ class TransformerPipe(Pipe[T1, T2]):
         try:
             encoded = await self.encode(chunk)
             return self.pipe.write(encoded)
-        except Exception:
-            self._emit('error', chunk)
+        except Exception as e:
+            self._emit('error', e)
             return False
 
     async def read(self, timeout: Optional[float] = None) -> Optional[T1]:

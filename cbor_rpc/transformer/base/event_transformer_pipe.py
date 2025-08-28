@@ -39,8 +39,6 @@ class EventTransformerPipe(EventPipe[T1, T2]):
         self._emit("error", error)
 
     async def write(self, chunk: T1) -> bool:
-        if self._closed:
-            return False
         try:
             encoded = await self.encode(chunk)
             return await self.pipe.write(encoded)
@@ -49,7 +47,4 @@ class EventTransformerPipe(EventPipe[T1, T2]):
             return False
 
     async def terminate(self, *args: Any) -> None:
-        if self._closed:
-            return
-        self._closed = True
         await self.pipe.terminate(*args)

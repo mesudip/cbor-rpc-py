@@ -1,14 +1,15 @@
 import pytest
 import asyncio
 from typing import List
-from cbor_rpc import TcpPipe, TcpServer
+from cbor_rpc import TcpPipe
+from tests.helpers.simple_tcp_server import SimpleTcpServer
 
 
 @pytest.mark.asyncio
 async def test_tcp_client_server_connection():
     """Test basic TCP client-server connection."""
     # Start a server
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     connections = []
@@ -45,7 +46,7 @@ async def test_tcp_client_server_connection():
 @pytest.mark.asyncio
 async def test_tcp_data_exchange():
     """Test bidirectional data exchange over TCP."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     server_received = []
@@ -128,7 +129,7 @@ async def test_tcp_connection_errors():
         await client.write(b"test")
     
     # Test double connection
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     try:
@@ -146,7 +147,7 @@ async def test_tcp_connection_errors():
 @pytest.mark.asyncio
 async def test_tcp_connection_events():
     """Test TCP connection events (connect, close, error)."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     events = []
@@ -195,7 +196,7 @@ async def test_tcp_connection_events():
 @pytest.mark.asyncio
 async def test_tcp_client_connection_tracking():
     """Test handling multiple simultaneous TCP connections."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     
@@ -232,7 +233,7 @@ async def test_tcp_client_connection_tracking():
 @pytest.mark.asyncio
 async def test_tcp_client_connection_tracking_self():
     """Test handling multiple simultaneous TCP connections."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     
@@ -267,7 +268,7 @@ async def test_tcp_client_connection_tracking_self():
 @pytest.mark.asyncio
 async def test_tcp_large_data_transfer():
     """Test transferring large amounts of data over TCP."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     received_data = bytearray()
@@ -311,7 +312,7 @@ async def test_tcp_large_data_transfer():
 @pytest.mark.asyncio
 async def test_tcp_server_context_manager():
     """Test using TcpServer as a context manager."""
-    async with await TcpServer.create('127.0.0.1', 0) as server:
+    async with await SimpleTcpServer.create('127.0.0.1', 0) as server:
         server_host, server_port = server.get_address()
         
         client = await TcpPipe.create_connection(server_host, server_port)
@@ -325,7 +326,7 @@ async def test_tcp_server_context_manager():
 @pytest.mark.asyncio
 async def test_tcp_invalid_data_types():
     """Test error handling for invalid data types."""
-    server = await TcpServer.create('127.0.0.1', 0)
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
     server_host, server_port = server.get_address()
     
     try:
