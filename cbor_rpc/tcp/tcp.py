@@ -2,11 +2,11 @@ from abc import abstractmethod
 import asyncio
 import socket
 from typing import Any, Callable, Optional, Tuple, Union
-from cbor_rpc.pipe.event_pipe import EventPipe
+from cbor_rpc.pipe.aio_pipe import AioPipe
 from cbor_rpc.rpc.server_base import Server
 
 
-class TcpPipe(EventPipe[bytes, bytes]):
+class TcpPipe(AioPipe[bytes, bytes]):
     """
     A TCP duplex pipe that implements Pipe<bytes, bytes> for network communication.
     Provides both client and server functionality for TCP connections.
@@ -14,12 +14,7 @@ class TcpPipe(EventPipe[bytes, bytes]):
     
     def __init__(self, reader: Optional[asyncio.StreamReader] = None, 
                  writer: Optional[asyncio.StreamWriter] = None):
-        super().__init__()
-        self._reader = reader
-        self._writer = writer
-        self._connected = False
-        self._closed = False
-        self._read_task: Optional[asyncio.Task] = None
+        super().__init__(reader,writer)
         
     @classmethod
     async def create_connection(cls, host: str, port: int, 
@@ -140,119 +135,24 @@ class TcpPipe(EventPipe[bytes, bytes]):
         except Exception as e:
             raise ConnectionError(f"Failed to connect to {host}:{port}: {e}")
     
-    async def _setup_connection(self) -> None:
-        """Set up the connection and start reading data."""
-        if not self._reader or not self._writer:
-            raise RuntimeError("Reader or writer not initialized")
-            
-        self._connected = True
-        self._closed = False
-        
-        # Start the read loop
-        self._read_task = asyncio.create_task(self._read_loop())
-        
-        # Emit connection event
-        await self._notify("connect")
     
-    async def _read_loop(self) -> None:
-        """Continuously read data from the TCP connection and emit data events."""
-        try:
-            while self._connected and not self._closed and self._reader:
-                try:
-                    # Read data in chunks
-                    data = await self._reader.read(8192)
-                    if not data:
-                        # Connection closed by remote
-                        break
-                    
-                    # Emit data event
-                    self._emit("data", data)
-                    
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    self._emit("error", e)
-                    break
-                    
-        except Exception as e:
-            self._emit("error", e)
-        finally:
-            if not self._closed:
-                await self._close_connection()
-    
-    async def write(self, chunk: bytes) -> bool:
-        """
-        Write data to the TCP connection.
-        
-        Args:
-            chunk: The bytes to write
-            
-        Returns:
-            True if the write was successful
-            
-        Raises:
-            ConnectionError: If not connected
-            TypeError: If chunk is not bytes
-        """
-        if not self._connected or self._closed:
-            raise ConnectionError("Not connected")
-            
-        if not isinstance(chunk, (bytes, bytearray)):
-            raise TypeError("Chunk must be bytes or bytearray")
-            
-        if not self._writer:
-            raise ConnectionError("Writer not available")
-            
-        try:
-            self._writer.write(chunk)
-            await self._writer.drain()
-            return True
-            
-        except Exception as e:
-            await self._emit("error", e)
-            return False
-    
-    async def terminate(self, *args: Any) -> None:
-        """
-        Terminate the TCP connection.
-        
-        Args:
-            *args: Optional arguments (code, reason)
-        """
-        await self._close_connection(*args)
-    
-    async def _close_connection(self, *args: Any) -> None:
-        """Close the TCP connection and clean up resources."""
-        if self._closed:
-            return
-            
-        self._closed = True
-        self._connected = False
-        
-        # Cancel the read task
-        if self._read_task and not self._read_task.done():
-            task, self._read_task = self._read_task, None
-            if task.cancel():
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-        
-        # Close the writer
-        if self._writer:
-            writer, self._writer = self._writer, None
+    def get_peer_info(self) -> Optional[Tuple[str, int]]:
+        """Get the remote peer's address and port."""
+        if self._writer and self._connected:
             try:
-                writer.close()
-                await writer.wait_closed()
+                return self._writer.get_extra_info('peername')
             except Exception:
-                pass  # Ignore errors during cleanup
-
-        # Emit close event
-        self._emit("close", *args)
+                pass
+        return None
     
-    def is_connected(self) -> bool:
-        """Check if the TCP connection is active."""
-        return self._connected and not self._closed
+    def get_local_info(self) -> Optional[Tuple[str, int]]:
+        """Get the local socket's address and port."""
+        if self._writer and self._connected:
+            try:
+                return self._writer.get_extra_info('sockname')
+            except Exception:
+                pass
+        return None
     
     def get_peer_info(self) -> Optional[Tuple[str, int]]:
         """Get the remote peer's address and port."""
