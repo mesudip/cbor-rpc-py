@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
@@ -25,13 +26,14 @@ class RpcV1(RpcClient):
         async def on_data(data: List[Any]) -> None:
             try:
                 if not isinstance(data, list) or len(data) != 5:
-                    print(f"RpcV1: Invalid message format: {data}")
+                    print(f"RpcV1: Invalid message format: {data}",file=sys.stderr)
                     return
 
                 version, direction, id_, method, params = data
                 if version != 1:
-                    print(f"RpcV1: Unsupported version: {data}")
+                    print(f"RpcV1: Unsupported version: {data}",file=sys.stderr)
                     return
+                print("RpvV1: Received", data,file=sys.stderr)
 
                 if direction < 2:  # Method call (0) or fire (1)
                     try:
@@ -48,7 +50,7 @@ class RpcV1(RpcClient):
                                 if direction == 0:
                                     await self.pipe.write([1, 2, id_, False, str(e)])
                                 else:
-                                    print(f"Fired method error: {method}, params={params}, error={e}")
+                                    print(f"Fired method error: {method}, params={params}, error={e}",file=sys.stderr)
                         
                         # Create task to handle response
                         asyncio.create_task(handle_response())
@@ -57,7 +59,7 @@ class RpcV1(RpcClient):
                         if direction == 0:
                             asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
                         else:
-                            print(f"Fired method error: {method}, params={params}, error={e}")
+                            print(f"Fired method error: {method}, params={params}, error={e}",file=sys.stderr)
                             
                 elif direction == 2:  # Response
                     promise = self._promises.pop(id_, None)
@@ -67,15 +69,15 @@ class RpcV1(RpcClient):
                         else:  # Error
                             await promise.reject(params)
                     else:
-                        print(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}")
+                        print(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}",file=sys.stderr)
                         
                 elif direction == 3:  # Event
                     await self._on_event(method, params)
                 else:
-                    print(f"RpcV1: Invalid direction: {direction}")
+                    print(f"RpcV1: Invalid direction: {direction}",file=sys.stderr)
                     
             except Exception as e:
-                print(f"Error processing RPC message: {e}")
+                print(f"Error processing RPC message: {e}",file=sys.stderr)
 
         self.pipe.on("data", on_data)
 
@@ -158,5 +160,5 @@ class RpcV1(RpcClient):
             raise Exception("Client Only Implementation")
 
         async def event_handler(topic: str, message: Any) -> None:
-            print(f"Rpc Event dropped {topic} {message}")
+            print(f"Rpc Event dropped {topic} {message}",file=sys.stderr)
         return RpcV1.make_rpc_v1(pipe, '', method_handler, event_handler)
