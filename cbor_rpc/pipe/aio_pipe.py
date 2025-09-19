@@ -72,10 +72,8 @@ class AioPipe(EventPipe[T1, T2], ABC):
         try:
             while self._connected and not self._closed and self._reader:
                 try:
-                    print("AioPipe: Waiting to read data...")
                     data = await self._reader.read(self._chunk_size)
                     if not data:  # EOF reached
-                        print("AioPipe: EOF reached on read.")
                         break
                     try:
                         await self._notify("data", data)
@@ -84,10 +82,10 @@ class AioPipe(EventPipe[T1, T2], ABC):
                         break
                 except asyncio.CancelledError:
                     break
-                except Exception as e:
+                except Exception as e: # Catch BaseException for GeneratorExit/other BaseExceptions
                     self._emit("error", e)  # Synchronous _emit
                     break
-        except Exception as e:
+        except Exception as e: # Catch BaseException for GeneratorExit/other BaseExceptions
             self._emit("error", e)  # Synchronous _emit
         finally:
             if not self._closed:

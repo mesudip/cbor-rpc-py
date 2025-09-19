@@ -46,8 +46,8 @@ class Server(AbstractEmitter, Generic[P]):
         Args:
             pipe: The pipe representing the connection
         """
-        if not self.accept(pipe):
-            pipe.terminate()
+        if not await self.accept(pipe):
+            await pipe.terminate()
             return 
         self._connections.add(pipe)
         # Set up cleanup when connection closes
