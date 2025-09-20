@@ -52,7 +52,7 @@ class SshPipe(AioPipe[bytes, bytes]):
         """
         client_keys = None
         if ssh_key_content:
-            client_keys = [asyncssh.read_private_key(ssh_key_content, passphrase=ssh_key_passphrase)]
+            client_keys = [asyncssh.import_private_key(ssh_key_content, passphrase=ssh_key_passphrase)]
 
         try:
             conn = await asyncio.wait_for(
