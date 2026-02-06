@@ -23,7 +23,7 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
         pass
 
     @staticmethod
-    def create_pair() -> Tuple['EventPipe[Any, Any]', 'EventPipe[Any, Any]']:
+    def create_inmemory_pair() -> Tuple['EventPipe[Any, Any]', 'EventPipe[Any, Any]']:
         """
         Create a pair of connected pipes for bidirectional communication.
 

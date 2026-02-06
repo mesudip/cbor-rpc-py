@@ -92,6 +92,7 @@ class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
                 while not self._closed:
                     chunk = await parent.read()
                     if chunk is None:
+                        print("PipeToEvent: Received termination signal, terminating event pipe.")
                         await self.terminate()
                         break
                     await self._notify("data", chunk)
@@ -103,6 +104,7 @@ class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
                 if self._closed:
                     return
                 self._closed = True
+                print("PipeToEvent: Terminating event pipe.")
                 await parent.terminate(*args)
                 self._emit("close", *args)
                 if self._pump_task:

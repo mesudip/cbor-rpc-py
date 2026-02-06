@@ -35,6 +35,10 @@ class Transformer(Generic[T1, T2]):
     @overload
     def bind(self, pipe: EventPipe) -> EventTransformerPipe: ...
 
+    @overload
+    def applyTransformer(self, pipe: Pipe) -> TransformerPipe: ...
+    @overload
+    def applyTransformer(self, pipe: EventPipe) -> EventTransformerPipe: ...
     def applyTransformer(self, pipe: Union[Pipe, EventPipe]) -> Union[TransformerPipe, EventTransformerPipe]:
         if isinstance(pipe, EventPipe):
             return EventTransformerPipe(pipe, self.to_async())
@@ -83,10 +87,14 @@ class AsyncTransformer(Generic[T1, T2]):
     @overload
     def bind(self, pipe: EventPipe) -> EventTransformerPipe: ...
 
+    @overload
+    def applyTransformer(self, pipe: Pipe) -> TransformerPipe: ...
+    @overload
+    def applyTransformer(self, pipe: EventPipe) -> EventTransformerPipe: ...
     def applyTransformer(self, pipe: Union[Pipe, EventPipe]) -> Union[TransformerPipe, EventTransformerPipe]:
         if isinstance(pipe, EventPipe):
-            return EventTransformerPipe(pipe)
+            return EventTransformerPipe(pipe, self)
         elif isinstance(pipe, Pipe):
-            return TransformerPipe(pipe)
+            return TransformerPipe(pipe, self)
         else:
             raise TypeError("Invalid pipe type")

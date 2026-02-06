@@ -6,8 +6,9 @@ import pytest_asyncio
 
 @pytest_asyncio.fixture
 async def event_pipe_pair():
-    pipe1, pipe2 = EventPipe.create_pair()
+    pipe1, pipe2 = EventPipe.create_inmemory_pair()
     yield pipe1, pipe2
+    # Terminate is an async method, so it needs to be awaited
     await pipe1.terminate()
     await pipe2.terminate()
 

@@ -67,15 +67,18 @@ class TcpPipe(AioPipe[bytes, bytes]):
         return await TcpServer.create(host, port, backlog)
 
     @staticmethod
-    async def create_pair() -> Tuple['TcpPipe', 'TcpPipe']:
+    async def create_inmemory_pair() -> Tuple['TcpPipe', 'TcpPipe']:
         """
         Create a pair of connected TCP pipes using a local server.
         
         Returns:
             A tuple of (client_pipe, server_pipe) connected via TCP
         """
+        class SimpleTcpServer(TcpServer):
+            async def accept(self, pipe: TcpPipe) -> bool:
+                return True
         # Create a temporary server
-        server = await TcpServer.create('127.0.0.1', 0)
+        server = await SimpleTcpServer.create('127.0.0.1', 0)
         host, port = server.get_address()
         
         # Set up to capture the server-side connection
@@ -96,8 +99,8 @@ class TcpPipe(AioPipe[bytes, bytes]):
             # Wait for server connection
             await connection_ready.wait()
             
-            # Close the server but keep the connections
-            await server.stop()
+            # Stop accepting new connections but keep the active pipes
+            await server.shutdown()
             
             return client_pipe, server_pipe
             
@@ -199,17 +202,17 @@ class TcpServer(Server[TcpPipe]):
         """
         tcp_server = cls.__new__(cls)
         Server.__init__(tcp_server)
-        
-        async def client_connected_cb(reader: asyncio.StreamReader, 
+
+        async def client_connected_cb(reader: asyncio.StreamReader,
                                     writer: asyncio.StreamWriter) -> None:
             tcp_pipe = TcpPipe(reader, writer)
             await tcp_pipe._setup_connection()
             await tcp_server._add_connection(tcp_pipe)
-        
+
         server = await asyncio.start_server(
             client_connected_cb, host, port, backlog=backlog
         )
-        
+
         tcp_server._server = server
         tcp_server._running = True
         return tcp_server
@@ -249,6 +252,15 @@ class TcpServer(Server[TcpPipe]):
         if self._server:
             self._server.close()
             await self._server.wait_closed()
+
+    async def shutdown(self) -> None:
+        """Stop accepting new connections while keeping active connections open."""
+        if not self._server:
+            return
+
+        self._running = False
+        self._server.close()
+        await self._server.wait_closed()
     
     def get_address(self) -> Tuple[str, int]:
         """Get the server's listening address and port."""

@@ -4,6 +4,8 @@ from typing import List
 from cbor_rpc import TcpPipe
 from tests.helpers.simple_tcp_server import SimpleTcpServer
 
+DEFAULT_TIMEOUT = 1.0 # we are doing everything on same machine. everything should be fast
+
 
 @pytest.mark.asyncio
 async def test_tcp_client_server_connection():
@@ -347,6 +349,83 @@ async def test_tcp_invalid_data_types():
         
     finally:
         await server.close()
+
+
+@pytest.mark.asyncio
+async def test_tcp_inmemory_pair_bidirectional_exchange():
+    """Test TcpPipe.create_inmemory_pair produces connected pipes that can exchange data."""
+    client_pipe, server_pipe = await TcpPipe.create_inmemory_pair()
+
+    try:
+        assert client_pipe.is_connected()
+        assert server_pipe.is_connected()
+
+        client_received = asyncio.Queue()
+        server_received = asyncio.Queue()
+
+        client_pipe.on("data", client_received.put_nowait)
+        server_pipe.on("data", server_received.put_nowait)
+
+        await client_pipe.write(b"ping")
+        server_data = await asyncio.wait_for(server_received.get(), timeout=DEFAULT_TIMEOUT)
+        assert server_data == b"ping"
+
+        await server_pipe.write(b"pong")
+        client_data = await asyncio.wait_for(client_received.get(), timeout=DEFAULT_TIMEOUT)
+        assert client_data == b"pong"
+
+    finally:
+        await client_pipe.terminate()
+        await server_pipe.terminate()
+
+
+@pytest.mark.asyncio
+async def test_tcp_shutdown_keeps_active_connections():
+    """Test shutting down the listener doesn't drop existing connections."""
+    server = await SimpleTcpServer.create('127.0.0.1', 0)
+    server_host, server_port = server.get_address()
+
+    server_connection = None
+
+    async def on_connection(tcp_pipe: TcpPipe):
+        nonlocal server_connection
+        server_connection = tcp_pipe
+
+    server.on_connection(on_connection)
+
+    try:
+        client = await TcpPipe.create_connection(server_host, server_port)
+        await asyncio.wait_for(asyncio.sleep(0.1), timeout=DEFAULT_TIMEOUT)
+        assert server_connection is not None
+
+        await server.shutdown()
+
+        # Existing connection should still be usable
+        client_received = asyncio.Queue()
+        server_received = asyncio.Queue()
+
+        client.on("data", client_received.put_nowait)
+        server_connection.on("data", server_received.put_nowait)
+
+        await client.write(b"still-alive")
+        server_data = await asyncio.wait_for(server_received.get(), timeout=DEFAULT_TIMEOUT)
+        assert server_data == b"still-alive"
+
+        await server_connection.write(b"still-alive-2")
+        client_data = await asyncio.wait_for(client_received.get(), timeout=DEFAULT_TIMEOUT)
+        assert client_data == b"still-alive-2"
+
+        # New connections should fail while listener is shut down
+        with pytest.raises(ConnectionError) as exc_info:
+            await TcpPipe.create_connection(server_host, server_port, timeout=0.2)
+        error_text = str(exc_info.value).lower()
+        assert "refused" in error_text or "connect call failed" in error_text
+
+        await client.terminate()
+        await server_connection.terminate()
+
+    finally:
+        await server.stop()
 
 
 if __name__ == "__main__":

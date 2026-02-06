@@ -37,6 +37,7 @@ class RpcV1Server(RpcServer):
     async def disconnect(self, connection_id: str, reason: Optional[str] = None) -> None:
         client = self.active_connections.pop(connection_id, None)
         if client:
+            print("RpcV1Server: Disconnecting client:", connection_id)
             await client.pipe.terminate(1000, reason or "Server terminated connection")
 
     def set_timeout(self, milliseconds: int) -> None:

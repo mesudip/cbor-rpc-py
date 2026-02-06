@@ -5,6 +5,7 @@ if TYPE_CHECKING:
 from typing import Any, Awaitable, Callable, TypeVar
 
 from cbor_rpc.pipe import EventPipe
+from .base_exception import NeedsMoreDataException
 
 T1 = TypeVar("T1")  # Output type after decoding
 T2 = TypeVar("T2")  # Input type before decoding (pipe input/output type)
@@ -29,8 +30,13 @@ class EventTransformerPipe(EventPipe[T1, T2]):
         try:
             decoded = await self.decode(data)
             self._emit("data", decoded)
+        except NeedsMoreDataException:
+            # If more data is needed, simply return and wait for the next chunk
+            return
         except Exception as e:
-            self._emit("error", e)
+            # Let the exception propagate up to AbstractEmitter._notify,
+            # which will catch it and emit the "error" event.
+            raise e
 
     def _on_close(self, *args: Any):
         self._emit("close", *args)

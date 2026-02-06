@@ -59,6 +59,7 @@ class AbstractEmitter(ABC):
             for result in results:
                 if isinstance(result, Exception):
                     self._emit("error", result)
+                    # Must raise error to notify caller and block normal execution
                     raise result
 
         self._emit(event_type, *args)
