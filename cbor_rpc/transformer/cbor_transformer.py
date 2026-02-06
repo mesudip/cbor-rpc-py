@@ -4,6 +4,7 @@ from typing import Any, Union
 from .base import Transformer, AsyncTransformer
 from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
 
+
 class CborTransformer(Transformer[Any, Any]):
     """
     A transformer that encodes Python objects to CBOR bytes and decodes CBOR bytes back to Python objects.
@@ -35,11 +36,13 @@ class CborTransformer(Transformer[Any, Any]):
             # Re-raise other decoding errors
             raise
 
+
 class CborStreamTransformer(AsyncTransformer[Any, Any]):
     """
     An async transformer that decodes a stream of concatenated CBOR objects.
     This is similar to how a JSON stream decoder would work, reading one object at a time.
     """
+
     def __init__(self):
         super().__init__()
         self._buffer = bytearray()
@@ -63,10 +66,10 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
             stream = BytesIO(self._buffer)
             decoder = cbor2.CBORDecoder(stream)
             decoded_data = decoder.decode()
-            
+
             bytes_consumed = stream.tell()
             self._buffer = self._buffer[bytes_consumed:]
-            
+
             return decoded_data
         except cbor2.CBORDecodeEOF:
             raise NeedsMoreDataException()
@@ -78,17 +81,17 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
                 # Discard one byte and try again
                 self._buffer = self._buffer[1:]
                 if not self._buffer:
-                    break # Buffer is empty, cannot recover further
+                    break  # Buffer is empty, cannot recover further
 
                 try:
                     stream = BytesIO(self._buffer)
                     decoder = cbor2.CBORDecoder(stream)
                     decoded_data = decoder.decode()
-                    
+
                     bytes_consumed = stream.tell()
                     self._buffer = self._buffer[bytes_consumed:]
-                    
-                    return decoded_data # Successfully decoded a new object
+
+                    return decoded_data  # Successfully decoded a new object
                 except cbor2.CBORDecodeEOF:
                     # If we need more data after discarding some, it means we might be in the middle of a valid object
                     raise NeedsMoreDataException()

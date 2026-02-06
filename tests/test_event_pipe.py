@@ -4,6 +4,7 @@ from typing import Any, Tuple
 from cbor_rpc import EventPipe
 import pytest_asyncio
 
+
 @pytest_asyncio.fixture
 async def event_pipe_pair():
     pipe1, pipe2 = EventPipe.create_inmemory_pair()
@@ -12,12 +13,14 @@ async def event_pipe_pair():
     await pipe1.terminate()
     await pipe2.terminate()
 
+
 @pytest.mark.asyncio
 async def test_create_pair(event_pipe_pair: Tuple[EventPipe, EventPipe]):
     # Positive case: Creating a pair of async pipes
     pipe1, pipe2 = event_pipe_pair
     assert isinstance(pipe1, EventPipe)
     assert isinstance(pipe2, EventPipe)
+
 
 @pytest.mark.asyncio
 async def test_write_success(event_pipe_pair: Tuple[EventPipe, EventPipe]):
@@ -26,12 +29,14 @@ async def test_write_success(event_pipe_pair: Tuple[EventPipe, EventPipe]):
     result = await pipe1.write("test_chunk")
     assert result is True
 
+
 @pytest.mark.asyncio
 async def test_terminate_success(event_pipe_pair: Tuple[EventPipe, EventPipe]):
     # Positive case: Terminating the pipe
     pipe1, pipe2 = event_pipe_pair
     await pipe1.terminate()
     # No exception should be raised
+
 
 @pytest.mark.asyncio
 async def test_pipeline_execution(event_pipe_pair: Tuple[EventPipe, EventPipe]):
@@ -47,8 +52,9 @@ async def test_pipeline_execution(event_pipe_pair: Tuple[EventPipe, EventPipe]):
 
     pipe1.pipeline("data", pipeline_handler)
     await pipe1._notify("data", "test_chunk")
-    await asyncio.wait_for(event.wait(), timeout=1) # Wait for the handler to be called
+    await asyncio.wait_for(event.wait(), timeout=1)  # Wait for the handler to be called
     assert received_chunk == "test_chunk"
+
 
 @pytest.mark.asyncio
 async def test_pipe_pair(event_pipe_pair: Tuple[EventPipe, EventPipe]):
@@ -64,8 +70,9 @@ async def test_pipe_pair(event_pipe_pair: Tuple[EventPipe, EventPipe]):
 
     pipe2.pipeline("data", handler)
     await pipe1.write("test_chunk")
-    await asyncio.wait_for(event.wait(), timeout=1) # Wait for the handler to be called
+    await asyncio.wait_for(event.wait(), timeout=1)  # Wait for the handler to be called
     assert received_chunk == "test_chunk"
+
 
 @pytest.mark.asyncio
 async def test_write_after_terminate(event_pipe_pair: Tuple[EventPipe, EventPipe]):
@@ -76,6 +83,7 @@ async def test_write_after_terminate(event_pipe_pair: Tuple[EventPipe, EventPipe
     result = await pipe1.write("test_chunk")
     assert result is False
 
+
 @pytest.mark.asyncio
 async def test_parallel_event_writes(event_pipe_pair: Tuple[EventPipe, EventPipe]):
     # Test case: Multiple coroutines writing to one end of the EventPipe
@@ -83,10 +91,10 @@ async def test_parallel_event_writes(event_pipe_pair: Tuple[EventPipe, EventPipe
     num_writes = 10
     test_chunks = [f"chunk_{i}" for i in range(num_writes)]
     received_chunks = []
-    
+
     # Use a lock to protect shared list in concurrent access
-    lock = asyncio.Lock() 
-    
+    lock = asyncio.Lock()
+
     # Use a queue to signal when all chunks are received
     received_queue = asyncio.Queue()
 
@@ -111,6 +119,7 @@ async def test_parallel_event_writes(event_pipe_pair: Tuple[EventPipe, EventPipe
     # Verify all chunks are received
     assert sorted(received_chunks) == sorted(test_chunks)
 
+
 @pytest.mark.asyncio
 async def test_parallel_event_processing(event_pipe_pair: Tuple[EventPipe, EventPipe]):
     # Test case: One pipe writes multiple chunks, and the other pipe's handler processes them
@@ -118,13 +127,13 @@ async def test_parallel_event_processing(event_pipe_pair: Tuple[EventPipe, Event
     num_chunks = 10
     test_chunks = [f"data_{i}" for i in range(num_chunks)]
     processed_chunks = []
-    
+
     lock = asyncio.Lock()
     processed_queue = asyncio.Queue()
 
     async def processing_handler(chunk: Any) -> None:
         # Simulate some async processing
-        await asyncio.sleep(0.01) 
+        await asyncio.sleep(0.01)
         async with lock:
             processed_chunks.append(chunk)
             if len(processed_chunks) == num_chunks:
@@ -142,12 +151,15 @@ async def test_parallel_event_processing(event_pipe_pair: Tuple[EventPipe, Event
     # Verify all chunks are processed
     assert sorted(processed_chunks) == sorted(test_chunks)
 
+
 @pytest.mark.asyncio
-async def test_concurrent_bidirectional_event_communication(event_pipe_pair: Tuple[EventPipe, EventPipe]):
+async def test_concurrent_bidirectional_event_communication(
+    event_pipe_pair: Tuple[EventPipe, EventPipe],
+):
     # Test case: Concurrent writes and event processing from both ends
     pipe1, pipe2 = event_pipe_pair
     num_messages = 5
-    
+
     client_sent_msgs = []
     client_received_responses = []
     server_received_msgs = []
@@ -169,8 +181,8 @@ async def test_concurrent_bidirectional_event_communication(event_pipe_pair: Tup
         if len(server_sent_responses) == num_messages:
             server_done_event.set()
 
-    pipe1.pipeline("data", client_handler) # Client listens for responses on the 'data' pipeline
-    pipe2.pipeline("data", server_handler)    # Server listens for client messages
+    pipe1.pipeline("data", client_handler)  # Client listens for responses on the 'data' pipeline
+    pipe2.pipeline("data", server_handler)  # Server listens for client messages
 
     async def client_writer_task():
         for i in range(num_messages):
@@ -186,9 +198,12 @@ async def test_concurrent_bidirectional_event_communication(event_pipe_pair: Tup
 
     # Verify client sent messages are received by server
     assert sorted([f"client_msg_{i}" for i in range(num_messages)]) == sorted(server_received_msgs)
-    
+
     # Verify server sent messages are received by client
-    assert sorted([f"server_response_to_client_msg_{i}" for i in range(num_messages)]) == sorted(client_received_responses)
+    assert sorted([f"server_response_to_client_msg_{i}" for i in range(num_messages)]) == sorted(
+        client_received_responses
+    )
+
 
 if __name__ == "__main__":
     pytest.main()

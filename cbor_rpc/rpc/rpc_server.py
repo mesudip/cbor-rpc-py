@@ -9,29 +9,25 @@ from cbor_rpc.pipe.event_pipe import EventPipe
 
 
 class RpcV1Server(RpcServer):
-    def __init__(self,server:Server):
+    def __init__(self, server: Server):
         self.active_connections: Dict[str, RpcV1] = {}
         self.timeout = 30000
 
     async def add_connection(self, conn_id: str, rpc_client: EventPipe[Any, Any]) -> None:
         def method_handler(method: str, args: List[Any]) -> Any:
             return self.handle_method_call(conn_id, method, args)
-        
+
         async def event_handler(topic: str, data: Any) -> None:
             await self._handle_event(conn_id, topic, data)
-        
-        client_rpc = RpcV1.make_rpc_v1(
-            rpc_client,
-            conn_id,
-            method_handler,
-            event_handler
-        )
+
+        client_rpc = RpcV1.make_rpc_v1(rpc_client, conn_id, method_handler, event_handler)
         client_rpc.set_timeout(self.timeout)
         self.active_connections[conn_id] = client_rpc
-        
+
         # Set up cleanup on close
         async def cleanup(*args):
             self.active_connections.pop(conn_id, None)
+
         rpc_client.on("close", cleanup)
 
     async def disconnect(self, connection_id: str, reason: Optional[str] = None) -> None:

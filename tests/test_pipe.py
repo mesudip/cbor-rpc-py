@@ -4,10 +4,12 @@ from typing import Any, Tuple
 from cbor_rpc.pipe.pipe import Pipe
 import pytest_asyncio
 
+
 @pytest_asyncio.fixture
 async def pipe_pair():
     pipe1, pipe2 = Pipe.create_pair()
     yield pipe1, pipe2
+
 
 @pytest.mark.asyncio
 async def test_create_pair():
@@ -18,17 +20,19 @@ async def test_create_pair():
     await pipe1.terminate()
     await pipe2.terminate()
 
+
 @pytest.mark.asyncio
-async def test_write_read(pipe_pair:Tuple[Pipe,Pipe]):
+async def test_write_read(pipe_pair: Tuple[Pipe, Pipe]):
     # Positive case: Writing and reading a chunk successfully
     pipe1, pipe2 = pipe_pair
 
     assert await pipe1.write("test_chunk") is True
-    await asyncio.sleep(0) # Allow event loop to process the write
+    await asyncio.sleep(0)  # Allow event loop to process the write
     assert await pipe2.read() == "test_chunk"
 
+
 @pytest.mark.asyncio
-async def test_close_pipe(pipe_pair:Tuple[Pipe,Pipe]):
+async def test_close_pipe(pipe_pair: Tuple[Pipe, Pipe]):
     # Positive case: Closing the pipe
     pipe1, pipe2 = pipe_pair
     await pipe1.terminate()
@@ -37,13 +41,15 @@ async def test_close_pipe(pipe_pair:Tuple[Pipe,Pipe]):
     assert pipe1._closed is True
     assert pipe2._closed is True
 
+
 @pytest.mark.asyncio
-async def test_write_after_close(pipe_pair:Tuple[Pipe,Pipe]):
+async def test_write_after_close(pipe_pair: Tuple[Pipe, Pipe]):
     # Negative case: Writing to a closed pipe
     pipe1, pipe2 = pipe_pair
     await pipe1.terminate()
 
     assert await pipe1.write("test_chunk") is False
+
 
 @pytest.mark.asyncio
 async def test_read_timeout(pipe_pair):
@@ -52,18 +58,20 @@ async def test_read_timeout(pipe_pair):
 
     assert await pipe1.read(timeout=0.1) is None
 
+
 @pytest.mark.asyncio
-async def test_bidirectional_communication(pipe_pair:Tuple[Pipe,Pipe]):
+async def test_bidirectional_communication(pipe_pair: Tuple[Pipe, Pipe]):
     # Positive case: Bidirectional communication between pipes
     pipe1, pipe2 = pipe_pair
 
     assert await pipe1.write("test_chunk") is True
-    await asyncio.sleep(0) # Allow event loop to process the write
+    await asyncio.sleep(0)  # Allow event loop to process the write
     assert await pipe2.read() == "test_chunk"
 
     assert await pipe2.write("response_chunk") is True
-    await asyncio.sleep(0) # Allow event loop to process the write
+    await asyncio.sleep(0)  # Allow event loop to process the write
     assert await pipe1.read() == "response_chunk"
+
 
 @pytest.mark.asyncio
 async def test_parallel_writes(pipe_pair: Tuple[Pipe, Pipe]):
@@ -87,6 +95,7 @@ async def test_parallel_writes(pipe_pair: Tuple[Pipe, Pipe]):
     # Verify all chunks are received and in correct order (or at least all present)
     assert sorted(received_chunks) == sorted(test_chunks)
 
+
 @pytest.mark.asyncio
 async def test_parallel_reads(pipe_pair: Tuple[Pipe, Pipe]):
     # Test case: Multiple coroutines reading from one end of the pipe
@@ -97,7 +106,7 @@ async def test_parallel_reads(pipe_pair: Tuple[Pipe, Pipe]):
     # Write all chunks first
     for chunk in test_chunks:
         await pipe1.write(chunk)
-        await asyncio.sleep(0) # Allow event loop to process the write
+        await asyncio.sleep(0)  # Allow event loop to process the write
 
     async def reader():
         return await pipe2.read()
@@ -108,12 +117,13 @@ async def test_parallel_reads(pipe_pair: Tuple[Pipe, Pipe]):
     # Verify all chunks are received
     assert sorted(received_chunks) == sorted(test_chunks)
 
+
 @pytest.mark.asyncio
 async def test_concurrent_bidirectional_communication(pipe_pair: Tuple[Pipe, Pipe]):
     # Test case: Concurrent writes and reads from both ends
     pipe1, pipe2 = pipe_pair
     num_messages = 20
-    
+
     async def client_task():
         sent = []
         received = []
@@ -144,9 +154,10 @@ async def test_concurrent_bidirectional_communication(pipe_pair: Tuple[Pipe, Pip
 
     # Verify client sent messages are received by server
     assert sorted([f"client_msg_{i}" for i in range(num_messages)]) == sorted(server_received)
-    
+
     # Verify server sent messages are received by client
     assert sorted([f"server_response_to_client_msg_{i}" for i in range(num_messages)]) == sorted(client_received)
+
 
 if __name__ == "__main__":
     pytest.main()

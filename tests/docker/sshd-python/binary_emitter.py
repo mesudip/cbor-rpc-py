@@ -3,7 +3,7 @@ import os
 import time
 import binascii
 
-hex_data = "DEADBEEF0001020380FF7F" # Removed \x0A\x0D (LF and CR)
+hex_data = "DEADBEEF0001020380FF7F"  # Removed \x0A\x0D (LF and CR)
 test_data = binascii.unhexlify(hex_data)
 
 while True:

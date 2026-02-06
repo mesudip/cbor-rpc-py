@@ -5,16 +5,16 @@ from ..event.emitter import AbstractEmitter
 from ..pipe import EventPipe
 
 # Generic type variable for pipe types
-P = TypeVar('P', bound=EventPipe)
+P = TypeVar("P", bound=EventPipe)
 
 
 class Server(AbstractEmitter, Generic[P]):
     """
     Abstract server class that manages connections and emits connection events.
-    
+
     Type parameter P specifies the type of Pipe that this server handles.
     """
-    
+
     def __init__(self):
         super().__init__()
         self._connections: Set[P] = set()
@@ -24,7 +24,7 @@ class Server(AbstractEmitter, Generic[P]):
     async def start(self, *args, **kwargs) -> Any:
         """
         Start the server.
-        
+
         Returns:
             Server-specific information (e.g., address, port)
         """
@@ -36,25 +36,27 @@ class Server(AbstractEmitter, Generic[P]):
         pass
 
     @abstractmethod
-    async def accept(self,pipe:P) -> bool:
+    async def accept(self, pipe: P) -> bool:
         pass
 
     async def _add_connection(self, pipe: P) -> None:
         """
         Add a new connection and emit a connection event.
-        
+
         Args:
             pipe: The pipe representing the connection
         """
         if not await self.accept(pipe):
             await pipe.terminate()
-            return 
+            return
         self._connections.add(pipe)
+
         # Set up cleanup when connection closes
         async def cleanup(*args):
             self._connections.discard(pipe)
+
         pipe.on("close", cleanup)
-        
+
         # Emit connection event
         await self._notify("connection", pipe)
 
@@ -75,7 +77,7 @@ class Server(AbstractEmitter, Generic[P]):
     def on_connection(self, handler: Callable[[P], None]) -> None:
         """
         Register a handler for new connections.
-        
+
         Args:
             handler: Function that takes a Pipe of type P as argument
         """

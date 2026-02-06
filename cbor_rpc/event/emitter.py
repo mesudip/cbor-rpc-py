@@ -5,6 +5,7 @@ import inspect
 import traceback
 import warnings
 
+
 class AbstractEmitter(ABC):
     def __init__(self):
         self._pipelines: Dict[str, List[Callable]] = {}

@@ -4,31 +4,37 @@ from typing import Optional, Tuple, Union
 
 from cbor_rpc.pipe.aio_pipe import AioPipe
 
+
 class SshPipe(AioPipe[bytes, bytes]):
     """
     A Pipe implementation that works over an SSH connection.
     It uses asyncssh to establish and manage the SSH session and channels.
     """
 
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                 ssh_client: asyncssh.SSHClientConnection,
-                 ssh_channel: asyncssh.SSHClientChannel):
+    def __init__(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        ssh_client: asyncssh.SSHClientConnection,
+        ssh_channel: asyncssh.SSHClientChannel,
+    ):
         super().__init__(reader, writer)
         self._ssh_client = ssh_client
         self._ssh_channel = ssh_channel
 
-
     @classmethod
-    async def connect(cls,
-                      host: str,
-                      port: int = 22,
-                      username: str = 'root',
-                      password: Optional[str] = None,
-                      ssh_key_content: Optional[str] = None,
-                      ssh_key_passphrase: Optional[str] = None,
-                      known_hosts: Optional[Union[str, list]] = None,
-                      timeout: Optional[float] = None,
-                      command: str = 'sh -l') -> 'SshPipe':
+    async def connect(
+        cls,
+        host: str,
+        port: int = 22,
+        username: str = "root",
+        password: Optional[str] = None,
+        ssh_key_content: Optional[str] = None,
+        ssh_key_passphrase: Optional[str] = None,
+        known_hosts: Optional[Union[str, list]] = None,
+        timeout: Optional[float] = None,
+        command: str = "sh -l",
+    ) -> "SshPipe":
         """
         Establishes an SSH connection and opens a session channel, returning an SshPipe.
 
@@ -63,12 +69,12 @@ class SshPipe(AioPipe[bytes, bytes]):
                         username=username,
                         password=password,
                         client_keys=client_keys,
-                        passphrase=ssh_key_passphrase, # Passphrase for encrypted client keys
-                        ignore_encrypted=False # Do not ignore encrypted keys
+                        passphrase=ssh_key_passphrase,  # Passphrase for encrypted client keys
+                        ignore_encrypted=False,  # Do not ignore encrypted keys
                     ),
                     known_hosts=known_hosts,
                 ),
-                timeout=timeout
+                timeout=timeout,
             )
 
             # Create a process on the SSH connection to get stdin/stdout streams.

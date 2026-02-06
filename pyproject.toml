@@ -27,3 +27,6 @@ addopts = "-v"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["cbor_rpc"]
+
+[tool.black]
+line-length = 120

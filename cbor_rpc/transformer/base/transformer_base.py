@@ -10,6 +10,7 @@ from .transformer_pipe import TransformerPipe
 T1 = TypeVar("T1")
 T2 = TypeVar("T2")
 
+
 # Sync Transformer (no async methods)
 class Transformer(Generic[T1, T2]):
     def __init__(self):
@@ -18,7 +19,7 @@ class Transformer(Generic[T1, T2]):
 
     def is_closed(self) -> bool:
         return self._closed
-    
+
     @abstractmethod
     def encode(self, data: T1) -> Any:
         pass
@@ -28,8 +29,8 @@ class Transformer(Generic[T1, T2]):
         pass
 
     def wait_next_data(self):
-       raise NeedsMoreDataException()
-        
+        raise NeedsMoreDataException()
+
     @overload
     def bind(self, pipe: Pipe) -> TransformerPipe: ...
     @overload
@@ -47,7 +48,7 @@ class Transformer(Generic[T1, T2]):
         else:
             raise TypeError("Invalid pipe type")
 
-    def to_async(self) -> 'AsyncTransformer[T1, T2]':
+    def to_async(self) -> "AsyncTransformer[T1, T2]":
         parent = self
 
         class WrappedAsyncTransformer(AsyncTransformer[T1, T2]):
@@ -62,6 +63,7 @@ class Transformer(Generic[T1, T2]):
 
         return WrappedAsyncTransformer()
 
+
 # Async Transformer (async methods)
 class AsyncTransformer(Generic[T1, T2]):
     def __init__(self):
@@ -70,7 +72,7 @@ class AsyncTransformer(Generic[T1, T2]):
 
     def is_closed(self) -> bool:
         return self._closed
-    
+
     @abstractmethod
     async def encode(self, data: T1) -> Any:
         pass
@@ -80,7 +82,7 @@ class AsyncTransformer(Generic[T1, T2]):
         pass
 
     def wait_next_data(self):
-       raise NeedsMoreDataException()
+        raise NeedsMoreDataException()
 
     @overload
     def bind(self, pipe: Pipe) -> TransformerPipe: ...

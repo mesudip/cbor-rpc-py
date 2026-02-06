@@ -3,6 +3,7 @@ import pytest
 import sys
 from cbor_rpc.stdio.stdio_pipe import StdioPipe
 
+
 @pytest.mark.asyncio
 async def test_stdtio_read_write():
     """
@@ -20,10 +21,10 @@ async def test_stdtio_read_write():
         if len(received_data) == 10:
             future.set_result(None)
 
-    pipe.pipeline('data', on_data)
+    pipe.pipeline("data", on_data)
 
     # Write 10 unique data chunks
-    test_data = [f"Test data {i}\n".encode('utf-8') for i in range(10)]
+    test_data = [f"Test data {i}\n".encode("utf-8") for i in range(10)]
     for data in test_data:
         await pipe.write(data)
         # Brief sleep to allow the subprocess to process the data

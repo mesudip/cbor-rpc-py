@@ -2,7 +2,7 @@ from typing import Any, Generic, TypeVar
 from cbor_rpc import EventPipe, RpcV1, TimedPromise
 
 # Generic type variables
-T1 = TypeVar('T1')
+T1 = TypeVar("T1")
 
 
 class SimplePipe(EventPipe[T1, T1], Generic[T1]):

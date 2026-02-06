@@ -2,9 +2,11 @@ import os
 from typing import List, Optional, Any
 from cbor_rpc import RpcV1Server
 
+
 class FilesystemRpcServer(RpcV1Server):
     async def validate_event_broadcast(self, connection_id, topic, message):
         return False
+
     async def handle_method_call(self, connection_id: str, method: str, args: List[Any]) -> Any:
         if method == "list_files":
             return self.list_files(*args)
@@ -29,7 +31,7 @@ class FilesystemRpcServer(RpcV1Server):
     def read_file(self, path: str, chunk_size: int = 4096, offset: int = 0) -> bytes:
         """Reads a file in chunks."""
         try:
-            with open(path, 'rb') as f:
+            with open(path, "rb") as f:
                 f.seek(offset)
                 return f.read(chunk_size)
         except Exception as e:
@@ -38,7 +40,7 @@ class FilesystemRpcServer(RpcV1Server):
     def create_file(self, path: str, content: Optional[bytes] = None) -> bool:
         """Creates a file with optional initial content."""
         try:
-            with open(path, 'wb') as f:
+            with open(path, "wb") as f:
                 if content:
                     f.write(content)
             return True
@@ -64,18 +66,20 @@ class FilesystemRpcServer(RpcV1Server):
             print(f"Error renaming file: {str(e)}")
             return False
 
+
 if __name__ == "__main__":
     import asyncio
     from cbor_rpc.tcp import TcpPipe, TcpServer
     from cbor_rpc.transformer.json_transformer import JsonTransformer
+
     async def main():
-        rpc_id=1
+        rpc_id = 1
         # Create a TCP server that handles connections, using JsonTransformer for RPC messages
         tcp_server = await TcpServer.create("localhost", 8000)
         print("Server running on port 8000")
 
         # Set up event handlers for new connections
-        async def handle_connection( rpc_pipe):
+        async def handle_connection(rpc_pipe):
             server = FilesystemRpcServer()
             await server.add_connection(str(rpc_id), rpc_pipe)
 

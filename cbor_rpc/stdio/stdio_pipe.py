@@ -6,8 +6,9 @@ from cbor_rpc.pipe.aio_pipe import AioPipe
 from cbor_rpc.pipe.pipe import Pipe
 from cbor_rpc.event.emitter import AbstractEmitter
 
-T1 = TypeVar('T1')
-T2 = TypeVar('T2')
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
+
 
 class StdioPipe(AioPipe[bytes, bytes]):
     """
@@ -15,15 +16,20 @@ class StdioPipe(AioPipe[bytes, bytes]):
     typically obtained from a subprocess's stdin/stdout.
     """
 
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, process: Optional[asyncio.subprocess.Process] = None):
-        super().__init__(reader,writer)
+    def __init__(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        process: Optional[asyncio.subprocess.Process] = None,
+    ):
+        super().__init__(reader, writer)
         self._process = process
 
     async def _setup(self):
         await self._setup_connection()
 
     @classmethod
-    async def open(cls) -> 'StdioPipe':
+    async def open(cls) -> "StdioPipe":
         """
         Creates a StdioPipe from the process's stdin and stdout.
         """
@@ -38,7 +44,7 @@ class StdioPipe(AioPipe[bytes, bytes]):
         return pipe
 
     @classmethod
-    async def start_process(cls, *args: str) -> 'StdioPipe':
+    async def start_process(cls, *args: str) -> "StdioPipe":
         """
         Starts a process and returns a StdioPipe for it.
         """
@@ -46,7 +52,7 @@ class StdioPipe(AioPipe[bytes, bytes]):
             *args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=sys.stderr
+            stderr=sys.stderr,
         )
         pipe = cls(process.stdout, process.stdin, process)
         await pipe._setup()
@@ -60,7 +66,6 @@ class StdioPipe(AioPipe[bytes, bytes]):
         if not self._process:
             raise RuntimeError("No subprocess associated with this StdioPipe instance.")
         return await self._process.wait()
-
 
     def terminate(self):
         """

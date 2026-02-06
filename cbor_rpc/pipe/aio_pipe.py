@@ -4,8 +4,9 @@ from abc import ABC
 from .event_pipe import EventPipe  # Assuming EventPipe is in a separate module
 
 # Constrain T1 and T2 to bytes or bytearray for type safety with asyncio streams
-T1 = TypeVar('T1', bound=Union[bytes, bytearray])
-T2 = TypeVar('T2', bound=Union[bytes, bytearray])
+T1 = TypeVar("T1", bound=Union[bytes, bytearray])
+T2 = TypeVar("T2", bound=Union[bytes, bytearray])
+
 
 class AioPipe(EventPipe[T1, T2], ABC):
     """
@@ -15,12 +16,15 @@ class AioPipe(EventPipe[T1, T2], ABC):
     Attributes:
         DEFAULT_READ_CHUNK_SIZE (int): Default size of chunks to read from the stream (8192 bytes).
     """
+
     DEFAULT_READ_CHUNK_SIZE = 8192
 
-    def __init__(self, 
-                 reader: Optional[asyncio.StreamReader] = None,
-                 writer: Optional[asyncio.StreamWriter] = None,
-                 chunk_size: int = DEFAULT_READ_CHUNK_SIZE):
+    def __init__(
+        self,
+        reader: Optional[asyncio.StreamReader] = None,
+        writer: Optional[asyncio.StreamWriter] = None,
+        chunk_size: int = DEFAULT_READ_CHUNK_SIZE,
+    ):
         """
         Initialize the AioPipe with optional reader, writer, and chunk size.
 
@@ -82,10 +86,10 @@ class AioPipe(EventPipe[T1, T2], ABC):
                         break
                 except asyncio.CancelledError:
                     break
-                except Exception as e: # Catch BaseException for GeneratorExit/other BaseExceptions
+                except Exception as e:  # Catch BaseException for GeneratorExit/other BaseExceptions
                     self._emit("error", e)  # Synchronous _emit
                     break
-        except Exception as e: # Catch BaseException for GeneratorExit/other BaseExceptions
+        except Exception as e:  # Catch BaseException for GeneratorExit/other BaseExceptions
             self._emit("error", e)  # Synchronous _emit
         finally:
             if not self._closed:

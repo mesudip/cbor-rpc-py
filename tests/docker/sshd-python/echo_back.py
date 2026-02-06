@@ -10,7 +10,7 @@ stdout_fd = sys.stdout.buffer.fileno()
 while True:
     try:
         # Read a chunk of data from stdin
-        data = os.read(stdin_fd, 4096) # Read up to 4096 bytes
+        data = os.read(stdin_fd, 4096)  # Read up to 4096 bytes
         if not data:
             # EOF reached on stdin
             break
@@ -23,6 +23,6 @@ while True:
         break
     except Exception as e:
         # Log any other errors to stderr
-        sys.stderr.write(f"Error in echo_back.py: {e}\n".encode('utf-8'))
+        sys.stderr.write(f"Error in echo_back.py: {e}\n".encode("utf-8"))
         sys.stderr.flush()
         break

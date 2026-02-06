@@ -1,5 +1,6 @@
 import sys
 
+
 def main():
     print("stdio_test_script: Started.", file=sys.stderr)
 
@@ -14,6 +15,7 @@ def main():
             break
         sys.stdout.write(data)
         sys.stdout.flush()
+
 
 if __name__ == "__main__":
     main()

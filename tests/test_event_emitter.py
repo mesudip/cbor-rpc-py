@@ -3,9 +3,11 @@ import asyncio
 from typing import Any, Callable
 from cbor_rpc.event.emitter import AbstractEmitter
 
+
 @pytest.mark.asyncio
 async def test_on_and_emit():
     """Test that subscribers registered with 'on' are called by '_emit' in registration order."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -36,13 +38,15 @@ async def test_on_and_emit():
     expected = [
         f"async_handler1_event1",
         f"sync_handler1_event1",
-        f"async_handler2_event1"
+        f"async_handler2_event1",
     ]
     assert sorted(events) == sorted(expected), f"Expected {expected}, got {events}"
+
 
 @pytest.mark.asyncio
 async def test_pipeline_and_notify():
     """Test that pipelines run before subscribers in '_notify', respecting registration order."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -82,22 +86,23 @@ async def test_pipeline_and_notify():
     expected_pipelines = [
         f"async_pipeline1_event2",
         f"sync_pipeline1_event2",
-        f"async_pipeline2_event2"
+        f"async_pipeline2_event2",
     ]
-    expected_subscribers = [
-        f"async_handler1_event2",
-        f"sync_handler1_event2"
-    ]
+    expected_subscribers = [f"async_handler1_event2", f"sync_handler1_event2"]
     pipeline_indices = [events.index(e) for e in expected_pipelines if e in events]
     subscriber_indices = [events.index(e) for e in expected_subscribers if e in events]
-    assert all(p < s for p in pipeline_indices for s in subscriber_indices), \
-        f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
-    assert sorted(events) == sorted(expected_pipelines + expected_subscribers), \
-        f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+    assert all(
+        p < s for p in pipeline_indices for s in subscriber_indices
+    ), f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
+    assert sorted(events) == sorted(
+        expected_pipelines + expected_subscribers
+    ), f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+
 
 @pytest.mark.asyncio
 async def test_unsubscribe():
     """Test that unsubscribing a handler removes it from the subscriber list."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -124,9 +129,11 @@ async def test_unsubscribe():
     expected = [f"sync_handler1_event3"]
     assert events == expected, f"Expected {expected}, got {events}"
 
+
 @pytest.mark.asyncio
 async def test_replace_on_handler():
     """Test that replace_on_handler sets only the new handler for the event."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -152,9 +159,11 @@ async def test_replace_on_handler():
     expected = [f"async_handler1_event4"]
     assert events == expected, f"Expected {expected}, got {events}"
 
+
 @pytest.mark.asyncio
 async def test_pipeline_failure():
     """Test that '_notify' raises an exception if a pipeline fails and doesn't call subscribers."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -184,9 +193,11 @@ async def test_pipeline_failure():
     expected = [f"async_pipeline1_event5"]
     assert events == expected, f"Expected {expected}, got {events}"
 
+
 @pytest.mark.asyncio
 async def test_multiple_event_types():
     """Test that only handlers for the triggered event type are called."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -241,10 +252,12 @@ async def test_multiple_event_types():
     expected_subscribers = [f"async_handler_a_data_a2", f"sync_handler_a_data_a2"]
     pipeline_indices = [events.index(e) for e in expected_pipelines if e in events]
     subscriber_indices = [events.index(e) for e in expected_subscribers if e in events]
-    assert all(p < s for p in pipeline_indices for s in subscriber_indices), \
-        f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
-    assert sorted(events) == sorted(expected_pipelines + expected_subscribers), \
-        f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+    assert all(
+        p < s for p in pipeline_indices for s in subscriber_indices
+    ), f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
+    assert sorted(events) == sorted(
+        expected_pipelines + expected_subscribers
+    ), f"Expected {expected_pipelines + expected_subscribers}, got {events}"
 
     # Test _emit for event_b
     events.clear()
@@ -261,14 +274,18 @@ async def test_multiple_event_types():
     expected_subscribers = [f"async_handler_b_data_b2", f"sync_handler_b_data_b2"]
     pipeline_indices = [events.index(e) for e in expected_pipelines if e in events]
     subscriber_indices = [events.index(e) for e in expected_subscribers if e in events]
-    assert all(p < s for p in pipeline_indices for s in subscriber_indices), \
-        f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
-    assert sorted(events) == sorted(expected_pipelines + expected_subscribers), \
-        f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+    assert all(
+        p < s for p in pipeline_indices for s in subscriber_indices
+    ), f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
+    assert sorted(events) == sorted(
+        expected_pipelines + expected_subscribers
+    ), f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+
 
 @pytest.mark.asyncio
 async def test_background_task_failure():
     """Test that background task failures in '_emit' don't affect other subscribers."""
+
     class TestEmitter(AbstractEmitter):
         pass
 
@@ -300,9 +317,10 @@ async def test_background_task_failure():
     expected = [
         f"async_handler1_event6",
         f"async_handler2_event6",
-        f"sync_handler_event6"
+        f"sync_handler_event6",
     ]
     assert sorted(events) == sorted(expected), f"Expected {expected}, got {events}"
+
 
 @pytest.mark.asyncio
 async def test_slow_emit_does_not_block_notify():
@@ -356,13 +374,13 @@ async def test_slow_emit_does_not_block_notify():
     pipeline_index = events.index("fast_notify_pipeline_data_notify")
     handler_index = events.index("fast_notify_handler_data_notify")
 
-    assert pipeline_index < slow_index and handler_index < slow_index, (
-        f"_notify handlers [{pipeline_index}, {handler_index}] should run before slow _emit [{slow_index}]"
-    )
+    assert (
+        pipeline_index < slow_index and handler_index < slow_index
+    ), f"_notify handlers [{pipeline_index}, {handler_index}] should run before slow _emit [{slow_index}]"
 
     expected = {
         "fast_notify_pipeline_data_notify",
         "fast_notify_handler_data_notify",
-        "slow_handler_data_emit"
+        "slow_handler_data_emit",
     }
     assert set(events) == expected, f"Expected {expected}, got {set(events)}"

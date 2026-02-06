@@ -1,8 +1,11 @@
 import asyncio
-from cbor_rpc import RpcV1 
+from cbor_rpc import RpcV1
 from cbor_rpc.tcp import TcpPipe
 from cbor_rpc.transformer.json_transformer import JsonTransformer
-from cbor_rpc.pipe.event_pipe import EventPipe # Keep this import for clarity, though not directly instantiated
+from cbor_rpc.pipe.event_pipe import (
+    EventPipe,
+)  # Keep this import for clarity, though not directly instantiated
+
 
 async def main():
     # Connect to the RPC server
@@ -30,11 +33,7 @@ async def main():
     print("File content:", content.decode())
 
     # Write to the test file
-    write_success = await rpc_client.call_method(
-        "create_file",
-        "test.txt",
-        b"Hello, world!"
-    )
+    write_success = await rpc_client.call_method("create_file", "test.txt", b"Hello, world!")
     print("Write successful:", write_success)
 
     # Read the updated file
@@ -42,16 +41,13 @@ async def main():
     print("Updated file content:", content.decode())
 
     # Rename the file
-    rename_success = await rpc_client.call_method(
-        "rename_file",
-        "test.txt",
-        "renamed_test.txt"
-    )
+    rename_success = await rpc_client.call_method("rename_file", "test.txt", "renamed_test.txt")
     print("Rename successful:", rename_success)
 
     # Delete the renamed file
     delete_success = await rpc_client.call_method("delete_file", "renamed_test.txt")
     print("Delete successful:", delete_success)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

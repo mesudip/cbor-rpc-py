@@ -3,21 +3,22 @@ import asyncio
 
 
 class TimedPromise:
-    def __init__(self, timeout_ms: int, timeout_cb: Optional[Callable[[], None]] = None, 
-                 message: str = "Timeout on RPC call"):
+    def __init__(
+        self,
+        timeout_ms: int,
+        timeout_cb: Optional[Callable[[], None]] = None,
+        message: str = "Timeout on RPC call",
+    ):
         self._timeout_ms = timeout_ms
         self._timeout_cb = timeout_cb
         self._message = message
         self._future = asyncio.get_event_loop().create_future()
         self._timeout_handle = None
         self._resolved = False
-        
+
         # Set up timeout
         if timeout_ms > 0:
-            self._timeout_handle = asyncio.get_event_loop().call_later(
-                timeout_ms / 1000.0,
-                self._on_timeout
-            )
+            self._timeout_handle = asyncio.get_event_loop().call_later(timeout_ms / 1000.0, self._on_timeout)
 
     @property
     def promise(self) -> asyncio.Future:
@@ -46,7 +47,7 @@ class TimedPromise:
             error_data = {
                 "timeout": True,
                 "timeoutPeriod": self._timeout_ms,
-                "message": self._message
+                "message": self._message,
             }
             self._future.set_exception(Exception(error_data))
             if self._timeout_cb:

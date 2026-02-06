@@ -26,20 +26,20 @@ class RpcV1(RpcClient):
         async def on_data(data: List[Any]) -> None:
             try:
                 if not isinstance(data, list) or len(data) != 5:
-                    print(f"RpcV1: Invalid message format: {data}",file=sys.stderr)
+                    print(f"RpcV1: Invalid message format: {data}", file=sys.stderr)
                     return
 
                 version, direction, id_, method, params = data
                 if version != 1:
-                    print(f"RpcV1: Unsupported version: {data}",file=sys.stderr)
+                    print(f"RpcV1: Unsupported version: {data}", file=sys.stderr)
                     return
-                print("RpvV1: Received", data,file=sys.stderr)
+                print("RpvV1: Received", data, file=sys.stderr)
 
                 if direction < 2:  # Method call (0) or fire (1)
                     try:
                         # Call the method and get the result
                         result = self.handle_method_call(method, params)
-                        
+
                         # Handle the response asynchronously
                         async def handle_response():
                             try:
@@ -50,17 +50,23 @@ class RpcV1(RpcClient):
                                 if direction == 0:
                                     await self.pipe.write([1, 2, id_, False, str(e)])
                                 else:
-                                    print(f"Fired method error: {method}, params={params}, error={e}",file=sys.stderr)
-                        
+                                    print(
+                                        f"Fired method error: {method}, params={params}, error={e}",
+                                        file=sys.stderr,
+                                    )
+
                         # Create task to handle response
                         asyncio.create_task(handle_response())
-                        
+
                     except Exception as e:
                         if direction == 0:
                             asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
                         else:
-                            print(f"Fired method error: {method}, params={params}, error={e}",file=sys.stderr)
-                            
+                            print(
+                                f"Fired method error: {method}, params={params}, error={e}",
+                                file=sys.stderr,
+                            )
+
                 elif direction == 2:  # Response
                     promise = self._promises.pop(id_, None)
                     if promise:
@@ -69,25 +75,28 @@ class RpcV1(RpcClient):
                         else:  # Error
                             await promise.reject(params)
                     else:
-                        print(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}",file=sys.stderr)
-                        
+                        print(
+                            f"Received rpc reply for expired request id: {id_}, success={method}, data={params}",
+                            file=sys.stderr,
+                        )
+
                 elif direction == 3:  # Event
                     await self._on_event(method, params)
                 else:
-                    print(f"RpcV1: Invalid direction: {direction}",file=sys.stderr)
-                    
+                    print(f"RpcV1: Invalid direction: {direction}", file=sys.stderr)
+
             except Exception as e:
-                print(f"Error processing RPC message: {e}",file=sys.stderr)
+                print(f"Error processing RPC message: {e}", file=sys.stderr)
 
         self.pipe.on("data", on_data)
 
     async def call_method(self, method: str, *args: Any) -> Any:
         counter = self._counter
         self._counter += 1
-        
+
         def timeout_callback():
             self._promises.pop(counter, None)
-        
+
         promise = TimedPromise(self._timeout, timeout_callback)
         self._promises[counter] = promise
         await self.pipe.write([1, 0, counter, method, list(args)])
@@ -118,14 +127,14 @@ class RpcV1(RpcClient):
     async def wait_next_event(self, topic: str, timeout_ms: Optional[int] = None) -> Any:
         if topic in self._waiters:
             raise Exception("Already waiting for event")
-        
+
         def timeout_callback():
             self._waiters.pop(topic, None)
-            
+
         waiter = TimedPromise(
             timeout_ms or self._timeout,
             timeout_callback,
-            f"Timeout Waiting for Event on: {topic}"
+            f"Timeout Waiting for Event on: {topic}",
         )
         self._waiters[topic] = waiter
         return await waiter.promise
@@ -139,7 +148,12 @@ class RpcV1(RpcClient):
         pass
 
     @staticmethod
-    def make_rpc_v1(pipe: EventPipe[Any, Any], id_: str, method_handler: Callable, event_handler: Callable) -> 'RpcV1':
+    def make_rpc_v1(
+        pipe: EventPipe[Any, Any],
+        id_: str,
+        method_handler: Callable,
+        event_handler: Callable,
+    ) -> "RpcV1":
         class ConcreteRpcV1(RpcV1):
             def get_id(self) -> str:
                 return id_
@@ -152,13 +166,15 @@ class RpcV1(RpcClient):
                     await event_handler(topic, message)
                 else:
                     event_handler(topic, message)
+
         return ConcreteRpcV1(pipe)
 
     @staticmethod
-    def read_only_client(pipe: EventPipe[Any, Any]) -> 'RpcV1':
+    def read_only_client(pipe: EventPipe[Any, Any]) -> "RpcV1":
         def method_handler(method: str, args: List[Any]) -> Any:
             raise Exception("Client Only Implementation")
 
         async def event_handler(topic: str, message: Any) -> None:
-            print(f"Rpc Event dropped {topic} {message}",file=sys.stderr)
-        return RpcV1.make_rpc_v1(pipe, '', method_handler, event_handler)
+            print(f"Rpc Event dropped {topic} {message}", file=sys.stderr)
+
+        return RpcV1.make_rpc_v1(pipe, "", method_handler, event_handler)

@@ -1,5 +1,6 @@
 import asyncio
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from .transformer_base import Transformer
 from typing import Any, Awaitable, Callable, TypeVar
@@ -10,11 +11,12 @@ from .base_exception import NeedsMoreDataException
 T1 = TypeVar("T1")  # Output type after decoding
 T2 = TypeVar("T2")  # Input type before decoding (pipe input/output type)
 
+
 class EventTransformerPipe(EventPipe[T1, T2]):
     encode: Callable[[T1], Awaitable[T2]]
     decode: Callable[[T2], Awaitable[T1]]
 
-    def __init__(self, pipe: EventPipe[T2, T2], transformer: 'Transformer'):
+    def __init__(self, pipe: EventPipe[T2, T2], transformer: "Transformer"):
         super().__init__()
         self.pipe = pipe
         self.pipe.pipeline("data", self._handle_data)

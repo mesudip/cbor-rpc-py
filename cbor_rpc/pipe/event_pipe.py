@@ -5,8 +5,8 @@ import inspect
 from ..event.emitter import AbstractEmitter
 
 # Generic type variables
-T1 = TypeVar('T1')
-T2 = TypeVar('T2')
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
 
 
 class EventPipe(AbstractEmitter, Generic[T1, T2]):
@@ -14,6 +14,7 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
     Event Pipe or are event based way for read/write.
     You cannot directly read from a Pipe. You have to use a pipeline("data") to register one or more functions to read data.
     """
+
     @abstractmethod
     async def write(self, chunk: T1) -> bool:
         pass
@@ -23,20 +24,21 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
         pass
 
     @staticmethod
-    def create_inmemory_pair() -> Tuple['EventPipe[Any, Any]', 'EventPipe[Any, Any]']:
+    def create_inmemory_pair() -> Tuple["EventPipe[Any, Any]", "EventPipe[Any, Any]"]:
         """
         Create a pair of connected pipes for bidirectional communication.
 
         Returns:
             A tuple of (pipe1, pipe2) where data written to pipe1 is emitted on pipe2 and vice versa.
         """
+
         class ConnectedPipe(EventPipe[Any, Any]):
             def __init__(self):
                 super().__init__()
-                self.connected_pipe: Optional['ConnectedPipe'] = None
+                self.connected_pipe: Optional["ConnectedPipe"] = None
                 self._closed = False
 
-            def connect_to(self, other: 'ConnectedPipe'):
+            def connect_to(self, other: "ConnectedPipe"):
                 self.connected_pipe = other
                 other.connected_pipe = self
 

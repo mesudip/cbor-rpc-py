@@ -34,6 +34,7 @@ def client_cbor(client_raw):
     cbor_transformer = CborTransformer()
     return cbor_transformer.applyTransformer(client_raw)
 
+
 @pytest.mark.asyncio
 class TestCborTransformer:
 
@@ -46,7 +47,7 @@ class TestCborTransformer:
         original_data = {"message": "Hello, CBOR!", "number": 456, "list": [1, 2, 3]}
         await client_transformed_pipe.write(original_data)
         encoded_data_received_by_server = await received_data_queue.get()
-        
+
         # Verify the raw bytes received by the server are valid CBOR
         decoded_by_server = cbor2.loads(encoded_data_received_by_server)
         assert decoded_by_server == original_data
@@ -66,7 +67,7 @@ class TestCborTransformer:
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
         # Simulate server sending incomplete CBOR bytes
-        incomplete_cbor_bytes = b'\x83\x01\x02' # Incomplete array, missing one element
+        incomplete_cbor_bytes = b"\x83\x01\x02"  # Incomplete array, missing one element
         with pytest.raises(cbor2.CBORDecodeError):
             await server_raw.write(incomplete_cbor_bytes)
 
@@ -76,7 +77,7 @@ class TestCborTransformer:
         assert "Incomplete CBOR data for non-stream transformer" in str(error)
 
         # Send truly invalid data
-        truly_invalid_cbor = b'\x1f'  # Unknown unsigned integer subtype
+        truly_invalid_cbor = b"\x1f"  # Unknown unsigned integer subtype
         with pytest.raises(cbor2.CBORDecodeError):
             await server_raw.write(truly_invalid_cbor)
         error = await asyncio.wait_for(error_queue.get(), timeout=1)
@@ -157,6 +158,7 @@ class TestCborTransformer:
 
         result = await client_transformed_pipe.write({"after": "close"})
         assert result is False
+
 
 @pytest.mark.asyncio
 class TestCborStreamTransformer:
@@ -274,7 +276,7 @@ class TestCborStreamTransformer:
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
         obj1 = {"valid": True}
-        invalid_bytes = b'\x1f'  # Unknown unsigned integer subtype
+        invalid_bytes = b"\x1f"  # Unknown unsigned integer subtype
         obj2 = {"another": "valid"}
 
         await server_raw.write(cbor2.dumps(obj1))

@@ -5,8 +5,8 @@ import asyncio
 from cbor_rpc.pipe.event_pipe import EventPipe
 from ..event.emitter import AbstractEmitter
 
-T1 = TypeVar('T1')
-T2 = TypeVar('T2')
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
 
 
 class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
@@ -27,13 +27,13 @@ class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
         pass
 
     @staticmethod
-    def create_pair() -> Tuple['Pipe[Any, Any]', 'Pipe[Any, Any]']:
+    def create_pair() -> Tuple["Pipe[Any, Any]", "Pipe[Any, Any]"]:
         class InMemoryPipe(Pipe[Any, Any]):
             def __init__(self):
                 super().__init__()
                 self._closed = False
                 self._buffer: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-                self.connected_pipe: Optional['InMemoryPipe'] = None
+                self.connected_pipe: Optional["InMemoryPipe"] = None
 
             async def write(self, chunk: Any) -> bool:
                 if self._closed or not self.connected_pipe or self.connected_pipe._closed:
@@ -65,19 +65,19 @@ class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
                 self._closed = True
                 # Signal termination to any pending reads
                 await self._buffer.put(None)
-                await self._notify("close", *args) # Notify external listeners
+                await self._notify("close", *args)  # Notify external listeners
 
                 if self.connected_pipe and not self.connected_pipe._closed:
-                    await self.connected_pipe._buffer.put(None) # Signal termination to connected pipe
-                    await self.connected_pipe.terminate(*args) # Recursively terminate connected pipe
+                    await self.connected_pipe._buffer.put(None)  # Signal termination to connected pipe
+                    await self.connected_pipe.terminate(*args)  # Recursively terminate connected pipe
 
         a = InMemoryPipe()
         b = InMemoryPipe()
         a.connected_pipe = b
         b.connected_pipe = a
         return a, b
-    
-    def make_event_based(self) -> 'EventPipe[T1, T2]':
+
+    def make_event_based(self) -> "EventPipe[T1, T2]":
         parent = self
 
         class PipeToEvent(EventPipe[T1, T2]):
