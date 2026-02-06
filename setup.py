@@ -8,9 +8,12 @@ setup(
     author_email="sudip@bhattarai.me",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    # url="https://github.com/your_username/cbor-rpc", # Replace with your project's URL
+    url="https://github.com/mesudip/cbor-rpc-py ",
     packages=find_packages(exclude=["cbor_rpc"]),
-    install_requires=["pytest>=8.3.2", "pytest-asyncio>=0.24.0"],
+    install_requires=["asyncssh>=2.14.0", "bcrypt", "cbor2"],
+    extras_require={
+        "test": ["pytest>=8.3.2", "pytest-asyncio>=0.24.0"],
+    },
     python_requires=">=3.8",
     classifiers=[
         "Programming Language :: Python :: 3",
