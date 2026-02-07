@@ -11,6 +11,8 @@ bcrypt==5.0.0
     # via cbor-rpc (pyproject.toml)
 cbor2==5.8.0
     # via cbor-rpc (pyproject.toml)
+coverage==7.6.4
+    # via pytest-cov
 cffi==2.0.0
     # via cryptography
 cryptography==46.0.4
@@ -31,6 +33,8 @@ pytest==8.4.0
     # via
     #   cbor-rpc (pyproject.toml)
     #   pytest-asyncio
+pytest-cov==5.0.0
+     # via cbor-rpc (pyproject.toml)
 pytest-asyncio==1.0.0
     # via cbor-rpc (pyproject.toml)
 tomli==2.4.0

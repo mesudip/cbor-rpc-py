@@ -1,5 +1,6 @@
 import os
 from typing import List, Optional, Any
+from cbor_rpc.rpc.context import RpcCallContext
 from cbor_rpc import RpcV1Server
 
 
@@ -7,7 +8,13 @@ class FilesystemRpcServer(RpcV1Server):
     async def validate_event_broadcast(self, connection_id, topic, message):
         return False
 
-    async def handle_method_call(self, connection_id: str, method: str, args: List[Any]) -> Any:
+    async def handle_method_call(
+        self,
+        connection_id: str,
+        context: RpcCallContext,
+        method: str,
+        args: List[Any],
+    ) -> Any:
         if method == "list_files":
             return self.list_files(*args)
         elif method == "read_file":

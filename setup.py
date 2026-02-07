@@ -12,7 +12,7 @@ setup(
     packages=find_packages(exclude=["cbor_rpc"]),
     install_requires=["asyncssh>=2.14.0", "bcrypt", "cbor2"],
     extras_require={
-        "test": ["pytest>=8.3.2", "pytest-asyncio>=0.24.0"],
+        "test": ["pytest>=8.3.2", "pytest-asyncio>=0.24.0", "pytest-cov>=5.0.0"],
     },
     python_requires=">=3.8",
     classifiers=[

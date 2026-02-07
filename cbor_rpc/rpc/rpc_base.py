@@ -1,16 +1,9 @@
 from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
-import asyncio
-import inspect
 from ..pipe.event_pipe import EventPipe
-from ..timed_promise import TimedPromise
 
 
 class RpcClient(ABC):
-    @abstractmethod
-    async def emit(self, topic: str, message: Any) -> None:
-        pass
-
     @abstractmethod
     async def call_method(self, method: str, *args: Any) -> Any:
         pass
@@ -31,14 +24,6 @@ class RpcAuthorizedClient(RpcClient):
 
 
 class RpcServer(ABC):
-    @abstractmethod
-    async def emit(self, connection_id: str, topic: str, message: Any) -> None:
-        pass
-
-    @abstractmethod
-    async def broadcast(self, topic: str, message: Any) -> None:
-        pass
-
     @abstractmethod
     async def call_method(self, connection_id: str, method: str, *args: Any) -> Any:
         pass

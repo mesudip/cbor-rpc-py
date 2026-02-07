@@ -28,7 +28,13 @@ class AbstractEmitter(ABC):
                 traceback.print_exc()
                 warnings.warn(f"Background task error in handler: {e}", RuntimeWarning)
 
-        asyncio.create_task(runner())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            warnings.warn("Background task skipped: no running event loop", RuntimeWarning)
+            return
+
+        loop.create_task(runner())
 
     def _emit(self, event_type: str, *args: Any) -> None:
         for sub in self._subscribers.get(event_type, []):

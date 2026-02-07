@@ -4,6 +4,7 @@ from typing import Any, Generic, List
 from unittest.mock import AsyncMock, MagicMock
 
 from cbor_rpc import EventPipe, RpcV1, TimedPromise
+from cbor_rpc.rpc.context import RpcCallContext
 from tests.helpers import SimplePipe
 
 
@@ -25,7 +26,7 @@ def throw_error_method(message: str) -> None:
 
 
 # Method handler for RPC
-def method_handler(method: str, args: List[Any]) -> Any:
+def method_handler(context: RpcCallContext, method: str, args: List[Any]) -> Any:
     if method == "sleep":
         return sleep_method(*args)
     elif method == "add":
@@ -37,9 +38,16 @@ def method_handler(method: str, args: List[Any]) -> Any:
     raise Exception(f"Unknown method: {method}")
 
 
-# Event handler for RPC
-async def event_handler(topic: str, message: Any) -> None:
-    pass  # No-op for testing
+
+class EventRpcHelper(RpcV1):
+    def get_id(self) -> str:
+        return "event_rpc"
+
+    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
+        raise Exception("Event-only RPC")
+
+    async def on_event(self, context: RpcCallContext, topic: str, payload: Any) -> None:
+        pass
 
 
 @pytest.fixture
@@ -48,8 +56,13 @@ def pipe():
 
 
 @pytest.fixture
+def event_rpc(pipe):
+    return EventRpcHelper(pipe)
+
+
+@pytest.fixture
 def rpc(pipe):
-    return RpcV1.make_rpc_v1(pipe, "test_id", method_handler, event_handler)
+    return RpcV1.make_rpc_v1(pipe, "test_id", method_handler)
 
 
 @pytest.mark.asyncio
@@ -105,49 +118,48 @@ async def test_fire_method(rpc):
 
 
 @pytest.mark.asyncio
-async def test_emit_event(rpc):
-    await rpc.emit("test_topic", {"data": "test"})
-    # No assertion needed; just verify no crash
+async def test_emit_event(event_rpc):
+    await event_rpc.emit("test_topic", {"data": "test"})
 
 
 @pytest.mark.asyncio
-async def test_wait_next_event_success(rpc, pipe):
+async def test_wait_next_event_success(event_rpc, pipe):
     async def simulate_event():
         await asyncio.sleep(0.1)
-        await pipe.write([1, 3, 0, "test_topic", {"data": "test"}])
+        await pipe.write([3, 0, "test_topic", {"data": "test"}])
 
     task = asyncio.create_task(simulate_event())
-    result = await rpc.wait_next_event("test_topic", 1000)
+    result = await event_rpc.wait_next_event("test_topic", 1000)
     assert result == {"data": "test"}
     await task
 
 
 @pytest.mark.asyncio
-async def test_wait_next_event_timeout(rpc):
+async def test_wait_next_event_timeout(event_rpc):
     with pytest.raises(Exception) as exc_info:
-        await rpc.wait_next_event("test_topic", 100)
+        await event_rpc.wait_next_event("test_topic", 100)
     assert exc_info.value.args[0]["timeout"] is True
     assert exc_info.value.args[0]["timeoutPeriod"] == 100
 
 
 @pytest.mark.asyncio
-async def test_wait_next_event_already_waiting(rpc):
-    rpc._waiters["test_topic"] = TimedPromise(1000)
+async def test_wait_next_event_already_waiting(event_rpc):
+    event_rpc._waiters["test_topic"] = TimedPromise(1000)
     with pytest.raises(Exception) as exc_info:
-        await rpc.wait_next_event("test_topic")
+        await event_rpc.wait_next_event("test_topic")
     assert str(exc_info.value) == "Already waiting for event"
 
 
 @pytest.mark.asyncio
 async def test_invalid_message_format(rpc, pipe):
-    await pipe.write([1, 2, 3])  # Invalid message
+    await pipe.write([1])  # Invalid message
     await asyncio.sleep(0.1)  # Allow processing
     # No crash means test passes
 
 
 @pytest.mark.asyncio
-async def test_unsupported_version(rpc, pipe):
-    await pipe.write([2, 0, 0, "add", [1, 2]])  # Wrong version
+async def test_unsupported_protocol(rpc, pipe):
+    await pipe.write([99, 0, 0, "add", [1, 2]])  # Unsupported protocol
     await asyncio.sleep(0.1)  # Allow processing
     # No crash means test passes
 
@@ -165,6 +177,7 @@ async def test_read_only_client(pipe):
 
     # We need to directly call the handle_method_call method to test it
     with pytest.raises(Exception) as exc_info:
-        read_only.handle_method_call("add", [1, 2])
+        context = RpcCallContext(read_only.logger)
+        read_only.handle_method_call(context, "add", [1, 2])
 
     assert str(exc_info.value) == "Client Only Implementation"

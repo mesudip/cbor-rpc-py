@@ -13,14 +13,11 @@ class JsonTransformer(Transformer[Any, Any]):
         self.encoding = encoding
 
     def encode(self, data: Any) -> bytes:
-        try:
-            json_str = json.dumps(
-                data, ensure_ascii=False
-            )  # Always allow non-ASCII characters to pass through json.dumps
-            return json_str.encode(self.encoding)
-        except Exception as e:
-            # Removed print statement as it was for debugging
-            raise  # Re-raise to be caught by EventTransformerPipe
+        json_str = json.dumps(
+            data, ensure_ascii=False
+        )  # Always allow non-ASCII characters to pass through json.dumps
+        return json_str.encode(self.encoding)
+
 
     def decode(self, data: Union[bytes, str, None]) -> Any:
         if data is None:

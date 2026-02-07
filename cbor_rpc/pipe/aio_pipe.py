@@ -86,11 +86,14 @@ class AioPipe(EventPipe[T1, T2], ABC):
                         break
                 except asyncio.CancelledError:
                     break
-                except Exception as e:  # Catch BaseException for GeneratorExit/other BaseExceptions
+                except BaseException as e:
+                    if isinstance(e, GeneratorExit):
+                        break
                     self._emit("error", e)  # Synchronous _emit
                     break
-        except Exception as e:  # Catch BaseException for GeneratorExit/other BaseExceptions
-            self._emit("error", e)  # Synchronous _emit
+        except BaseException as e:
+            if not isinstance(e, (asyncio.CancelledError, GeneratorExit)):
+                self._emit("error", e)  # Synchronous _emit
         finally:
             if not self._closed:
                 await self._close_connection()
