@@ -210,11 +210,13 @@ class TestCborStreamTransformer:
         cbor_bytes = cbor2.dumps(obj)
 
         await server_raw.write(cbor_bytes[:10])
+        await asyncio.sleep(0.05)
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(received_data_queue.get(), timeout=0.1)
         assert error_queue.empty()
 
         await server_raw.write(cbor_bytes[10:50])
+        await asyncio.sleep(0.05)
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(received_data_queue.get(), timeout=0.1)
         assert error_queue.empty()
@@ -240,10 +242,12 @@ class TestCborStreamTransformer:
         cbor_bytes3 = cbor2.dumps(obj3)
 
         await server_raw.write(cbor_bytes1[:5])
+        await asyncio.sleep(0.05)
         await server_raw.write(cbor_bytes1[5:])
         decoded1 = await received_data_queue.get()
         assert decoded1 == obj1
 
+        await asyncio.sleep(0.05)
         await server_raw.write(cbor_bytes2 + cbor_bytes3)
 
         await server_raw.write(b"")

@@ -40,6 +40,25 @@ class EventTransformerPipe(EventPipe[T1, T2]):
             # which will catch it and emit the "error" event.
             raise e
 
+        # Try to decode more from the buffer if the transformer supports it
+        while True:
+            try:
+                # We pass None to indicate "no new data, just decode from buffer"
+                # We catch TypeError in case the transformer does not support None/buffering
+                decoded = await self.decode(None)
+                await self._notify("data", decoded)
+            except NeedsMoreDataException:
+                break
+            except TypeError:
+                # Transformer likely doesn't support None (not a stream transformer)
+                break
+            except Exception as e:
+                # Other errors in subsequent decoding should probably be reported.
+                # However, since the *primary* data was processed, maybe we should just emit error?
+                # or raise? Raising here might be outside the context of the initial caller if we were async...
+                # But we are inside _handle_data which is awaited by _notify.
+                raise e
+
     def _on_close(self, *args: Any):
         self._emit("close", *args)
 

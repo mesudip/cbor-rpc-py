@@ -16,8 +16,11 @@ class DummyAsyncTransformer(AsyncTransformer[Any, Any]):
         return f"enc:{data}"
 
     async def decode(self, data: Any) -> Any:
-        if asyncio.iscoroutine(data):
-            data = await data
+        if data is None:
+            # Mimic standard transformer behavior which usually expects specific type input
+            # and rejects None if it doesn't support buffering/streaming check via None.
+            raise TypeError("Unexpected None input")
+
         if data == "need_more":
             raise NeedsMoreDataException()
         if data == "decode_error":
