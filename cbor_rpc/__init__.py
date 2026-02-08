@@ -2,45 +2,49 @@
 CBOR-RPC: An async-compatible CBOR-based RPC system
 """
 
-from .emitter import AbstractEmitter
-from .async_pipe import Pipe
-from .transformer import Transformer
-from .promise import DeferredPromise
-from .client import RpcClient, RpcAuthorizedClient, RpcV1
-from .server import RpcServer, RpcV1Server
-from .server_base import Server
+from .event import AbstractEmitter
+from .pipe import EventPipe, Pipe
+from .timed_promise import TimedPromise
 from .tcp import TcpPipe, TcpServer
-from .json_transformer import JsonTransformer
-from .sync_pipe import SyncPipe
+from .transformer import CborStreamTransformer, CborTransformer, JsonTransformer, Transformer
+from .rpc import (
+    RpcClient,
+    RpcAuthorizedClient,
+    RpcServer,
+    RpcV1,
+    RpcV1Server,
+    Server,
+    RpcCallContext,
+    RpcLogger,
+)
 
 __all__ = [
-    # Emitter
-    'AbstractEmitter',
-
-    # Pipe classes
-    'Pipe',
-    'SyncPipe',
-    'Transformer',
-
     # Promise
-    'DeferredPromise',
-
-    # Client classes
-    'RpcClient',
-    'RpcAuthorizedClient',
-    'RpcV1',
-
-    # Server classes
-    'Server',
-    'RpcServer',
-    'RpcV1Server',
-
-    # TCP classes
-    'TcpPipe',
-    'TcpServer',
-
+    "TimedPromise",
+    # Emitter
+    "AbstractEmitter",
+    # Pipe abstract  classes
+    "EventPipe",
+    "Pipe",
+    # Server abstract classes
+    "Server",
+    # Rpc abstract classes
+    "RpcClient",
+    "RpcAuthorizedClient",
+    "RpcServer",
+    # Rpc base implementation
+    "RpcV1",
+    "RpcV1Server",
+    # Rpc high level
+    "RpcCallContext",
+        "RpcLogger",  # TCP classes
+    "TcpPipe",
+    "TcpServer",
     # Transformers
-    'JsonTransformer',
+    "Transformer",
+    "JsonTransformer",
+    "CborTransformer",
+    "CborStreamTransformer",
 ]
 
 __version__ = "0.1.0"

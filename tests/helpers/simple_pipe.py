@@ -1,11 +1,11 @@
 from typing import Any, Generic, TypeVar
-from cbor_rpc import Pipe, RpcV1, DeferredPromise
+from cbor_rpc import EventPipe, RpcV1, TimedPromise
 
 # Generic type variables
-T1 = TypeVar('T1')
+T1 = TypeVar("T1")
 
 
-class SimplePipe(Pipe[T1, T1], Generic[T1]):
+class SimplePipe(EventPipe[T1, T1], Generic[T1]):
     def __init__(self):
         super().__init__()
         self._closed = False
@@ -13,11 +13,11 @@ class SimplePipe(Pipe[T1, T1], Generic[T1]):
     async def write(self, chunk: T1) -> bool:
         if self._closed:
             return False
-        await self._emit("data", chunk)
+        await self._notify("data", chunk)
         return True
 
     async def terminate(self, *args: Any) -> None:
         if self._closed:
             return
         self._closed = True
-        await self._emit("close", *args)
+        self._emit("close", *args)
