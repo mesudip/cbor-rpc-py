@@ -8,6 +8,7 @@ import time
 import asyncio
 
 from cbor_rpc.ssh.ssh_pipe import SshServer
+from tests.integration.rpc_test_helpers import get_stdio_server_script_path as _get_stdio_server_script_path
 
 # Ensure the project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -18,6 +19,11 @@ SSHD_IMAGE_NAME = "cbor-rpc-py-sshd-python"
 SSHD_CONTAINER_NAME = "test-sshd-container"
 # Assuming running from root
 SSHD_DOCKERFILE_PATH = "./tests/docker/sshd-python"
+
+
+@pytest.fixture
+def get_stdio_server_script_path():
+    return _get_stdio_server_script_path()
 
 @pytest.fixture(scope="session")
 def ssh_keys():

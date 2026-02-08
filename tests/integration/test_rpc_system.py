@@ -78,28 +78,15 @@ async def ssh_unix_socket_pipe(ssh_server: SshServer):
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
     wrapper_pipe = None
     try:
-        try:
-            pipe = await ssh_server.open_unix_connection(socket_path)
-            if hasattr(pipe, '_setup_connection'):
-                await pipe._setup_connection()
-        except asyncssh.misc.ChannelOpenError:
-            if server_proc is not None:
-                server_proc.terminate()
-                try:
-                    await asyncio.wait_for(server_proc.wait_closed(), timeout=5)
-                except:
-                    pass
-                server_proc = None
-            wrapper_pipe = await ssh_server.run_command(
-                f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path} --command python3 /app/rpc_server.py"
-            )
-            pipe = wrapper_pipe
+        wrapper_pipe = await ssh_server.run_command(
+            f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}"
+        )
+        pipe = wrapper_pipe
         transformer = CborStreamTransformer().apply_transformer(pipe)
         yield transformer
     finally:
         try:
-            if wrapper_pipe is not None:
-                await wrapper_pipe.terminate()
+            await wrapper_pipe.terminate()
             if server_proc is not None:
                 server_proc.terminate()
                 await asyncio.wait_for(server_proc.wait_closed(), timeout=5)

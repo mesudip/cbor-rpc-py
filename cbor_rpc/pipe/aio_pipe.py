@@ -53,6 +53,8 @@ class AioPipe(EventPipe[T1, T2], ABC):
         Raises:
             RuntimeError: If reader or writer is not initialized.
         """
+        if self._connected and not self._closed:
+            return
         if not self._reader or not self._writer:
             raise RuntimeError("Reader or writer not initialized")
 
