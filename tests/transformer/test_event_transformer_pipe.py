@@ -63,8 +63,8 @@ async def test_event_transformer_pipe_data_and_errors():
     await asyncio.sleep(0.01)
     assert received == ["dec:ok"]
 
-    with pytest.raises(ValueError):
-        await base_b.write("decode_error")
+    ok = await base_b.write("decode_error")
+    assert ok is True
     await asyncio.sleep(0.01)
     assert errors
 

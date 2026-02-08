@@ -45,7 +45,15 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
             async def write(self, chunk: Any) -> bool:
                 if self._closed or not self.connected_pipe or self.connected_pipe._closed:
                     return False
-                await self.connected_pipe._notify("data", chunk)
+                async def _deliver() -> None:
+                    try:
+                        await self.connected_pipe._notify("data", chunk)
+                    except Exception:
+                        # Receiver-side errors should not bubble to the writer.
+                        return True
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(_deliver())
                 return True
 
             async def terminate(self, *args: Any) -> None:
