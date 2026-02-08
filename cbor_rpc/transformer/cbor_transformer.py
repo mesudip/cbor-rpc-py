@@ -4,6 +4,13 @@ from typing import Any, Union
 from .base import Transformer, AsyncTransformer
 from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
 
+# We import the Python implementation of CBORDecoder ensuring we avoid buffering issues
+# that can occur with the C extension when using stream slicing logic.
+try:
+    from cbor2._decoder import CBORDecoder as PythonCBORDecoder
+except ImportError:
+    from cbor2 import CBORDecoder as PythonCBORDecoder
+
 
 class CborTransformer(Transformer[Any, Any]):
     """
@@ -64,7 +71,7 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
 
         try:
             stream = BytesIO(self._buffer)
-            decoder = cbor2.CBORDecoder(stream)
+            decoder = PythonCBORDecoder(stream)
             decoded_data = decoder.decode()
             if decoded_data is cbor2.break_marker:
                 raise cbor2.CBORDecodeError("Unexpected break marker")
@@ -87,7 +94,7 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
 
                 try:
                     stream = BytesIO(self._buffer)
-                    decoder = cbor2.CBORDecoder(stream)
+                    decoder = PythonCBORDecoder(stream)
                     decoded_data = decoder.decode()
 
                     bytes_consumed = stream.tell()
