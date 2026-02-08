@@ -50,7 +50,9 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
                         await self.connected_pipe._notify("data", chunk)
                     except Exception:
                         # Receiver-side errors should not bubble to the writer.
-                        return True
+                        # Mirror AioPipe behavior by closing both ends on pipeline errors.
+                        await self.connected_pipe.terminate()
+                        return
 
                 loop = asyncio.get_running_loop()
                 loop.create_task(_deliver())
@@ -62,6 +64,7 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
                 self._closed = True
                 self._emit("close", *args)
                 if self.connected_pipe and not self.connected_pipe._closed:
+                    self.connected_pipe._closed = True
                     self.connected_pipe._emit("close", *args)
 
         pipe1 = ConnectedPipe()

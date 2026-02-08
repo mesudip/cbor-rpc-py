@@ -13,6 +13,10 @@ T2 = TypeVar("T2")
 
 # Sync Transformer (no async methods)
 class Transformer(Generic[T1, T2]):
+    """
+    Transformer converts input of type T1 to output of type T2 and vice versa.
+    Write expects T1, read produces T1. The underlying pipe works with T2.
+    """
     def __init__(self):
         super().__init__()
         self._closed = False

@@ -71,24 +71,21 @@ class TestCborTransformer:
         decoded_data_received_by_client = await client_received_data_queue.get()
         assert decoded_data_received_by_client == response_data
 
-    async def test_cbor_transformer_decoding_error_on_read(self, server_raw, client_cbor):
+    async def test_cbor_transformer_decoding_error_on_read(self, server_raw, client_cbor,client_raw):
         client_transformed_pipe = client_cbor
 
         error_queue = TimeoutQueue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
         incomplete_cbor_bytes = b"\x83\x01\x02"
-        ok = await server_raw.write(incomplete_cbor_bytes)
-        assert ok is True
+        assert await server_raw.write(incomplete_cbor_bytes)
 
         error = await asyncio.wait_for(error_queue.get(), timeout=1)
         assert type(error).__name__.startswith("CBORDecode")
-
-        truly_invalid_cbor = b"\x1f"
-        ok = await server_raw.write(truly_invalid_cbor)
-        assert ok is True
-        error = await asyncio.wait_for(error_queue.get(), timeout=1)
-        assert type(error).__name__.startswith("CBORDecode")
+        # sleep 2
+        await asyncio.sleep(0.2)
+        assert server_raw._closed is True, "Pipe should  be closed on decode error"
+        assert server_raw._closed is True, "Pipe should  be closed on decode error"
 
     async def test_cbor_transformer_non_bytes_data(self, server_raw, client_cbor):
         transformer = CborTransformer()

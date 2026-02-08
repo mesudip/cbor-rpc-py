@@ -12,6 +12,9 @@ T2 = TypeVar("T2")
 class Pipe(AbstractEmitter, Generic[T1, T2], ABC):
     """
     Abstract Pipe defining async event-based read/write/terminate interface.
+    We write T1
+    We read  T2.
+    Normally pipes will have T1=T2. if T1!=T2, then you need to use a transformer to convert between them.
     """
 
     @abstractmethod

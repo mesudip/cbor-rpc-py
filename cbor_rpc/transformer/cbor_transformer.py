@@ -26,7 +26,7 @@ def _is_eof_error(exc: Exception) -> bool:
     return isinstance(exc, (cbor2.CBORDecodeEOF, IndexError)) or type(exc).__name__ == "CBORDecodeEOF"
 
 
-class CborTransformer(Transformer[Any, Any]):
+class CborTransformer(Transformer[Any, bytes]):
     """Encodes Python objects to CBOR bytes and decodes CBOR bytes back."""
 
     def encode(self, data: Any) -> bytes:
