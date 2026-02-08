@@ -9,7 +9,7 @@ from cbor_rpc.rpc.rpc_v1 import RpcV1, RpcCore
 from cbor_rpc.rpc.rpc_server import RpcV1Server
 
 
-class TestRpcServer(RpcV1Server):
+class TstRpcServer(RpcV1Server):
     async def handle_method_call(
         self,
         connection_id: str,
@@ -112,7 +112,7 @@ async def test_rpc_v1_send_log_filters_by_peer_level():
 
 @pytest.mark.asyncio
 async def test_rpc_v1_server_connection_lifecycle():
-    server = TestRpcServer()
+    server = TstRpcServer()
     pipe_a, pipe_b = EventPipe.create_inmemory_pair()
 
     client_called = asyncio.Event()
@@ -154,7 +154,7 @@ async def test_rpc_v1_server_connection_lifecycle():
 
 @pytest.mark.asyncio
 async def test_rpc_v1_server_inactive_client_errors():
-    server = TestRpcServer()
+    server = TstRpcServer()
 
     with pytest.raises(Exception) as exc_info:
         await server.call_method("missing", "ping")
@@ -208,7 +208,7 @@ async def test_rpc_core_nested_result_and_error_response():
 
 @pytest.mark.asyncio
 async def test_rpc_v1_server_close_cleanup_and_timeout_applied():
-    server = TestRpcServer()
+    server = TstRpcServer()
     server.set_timeout(123)
     pipe_a, _pipe_b = EventPipe.create_inmemory_pair()
     await server.add_connection("c1", pipe_a)
@@ -220,5 +220,5 @@ async def test_rpc_v1_server_close_cleanup_and_timeout_applied():
 
 
 def test_rpc_v1_server_get_client_and_disconnect_missing():
-    server = TestRpcServer()
+    server = TstRpcServer()
     assert server.get_client("missing") is None

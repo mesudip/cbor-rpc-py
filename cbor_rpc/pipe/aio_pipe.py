@@ -175,6 +175,17 @@ class AioPipe(EventPipe[T1, T2], ABC):
             self._emit("error", e)  # Synchronoous _emit
             return False
 
+    async def write_eof(self) -> None:
+        """
+        Write EOF to the writer if supported.
+        """
+        if self._writer and self._writer.can_write_eof():
+            self._writer.write_eof()
+            try:
+                await self._writer.drain()
+            except Exception:
+                pass
+
     async def terminate(self, *args: Any) -> None:
         """
         Terminate the connection.

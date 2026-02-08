@@ -40,11 +40,11 @@ class RpcCore(RpcClient):
 
                 protocol_id = data[0]
                 if protocol_id == 1:
-                    await self.handle_proto_1(data)
+                    await self._handle_proto_1(data)
                 elif protocol_id == 2:
-                    await self.handle_proto_2(data)
+                    await self._handle_proto_2(data)
                 elif protocol_id == 3:
-                    await self.handle_proto_3(data)
+                    await self._handle_proto_3(data)
                 else:
                     logger.warning(f"RpcCore: Unsupported protocol: {data}")
 
@@ -53,7 +53,7 @@ class RpcCore(RpcClient):
 
         self.pipe.on("data", on_data)
 
-    async def handle_proto_1(self, data: List[Any]) -> None:
+    async def _handle_proto_1(self, data: List[Any]) -> None:
         """Handle Protocol 1 (RPC) messages."""
         if len(data) < 3:
             logger.warning(f"RpcCore [Proto 1]: Invalid format: {data}")
@@ -123,7 +123,7 @@ class RpcCore(RpcClient):
             logger.warning(f"RpcCore [Proto 1]: Unknown sub-protocol: {sub_proto_id}")
 
 
-    async def handle_proto_2(self, data: List[Any]) -> None:
+    async def _handle_proto_2(self, data: List[Any]) -> None:
         """Handle Protocol 2 (Logging) messages."""
         # Format: [2, log_level, ref_proto, ref_id, content]
         if len(data) >= 3 and data[1] == 0:
@@ -145,7 +145,7 @@ class RpcCore(RpcClient):
 
         logger.info(f"[RemoteLog:{level_str}] p{ref_proto}:{ref_id} {content}")
 
-    async def handle_proto_3(self, data: List[Any]) -> None:
+    async def _handle_proto_3(self, data: List[Any]) -> None:
         logger.warning(f"RpcCore [Proto 3]: Unsupported event message: {data}")
 
 
@@ -229,7 +229,7 @@ class RpcV1(RpcCore):
         self._last_event_topic: Optional[str] = None
         self.event_logger = RpcLogger(self._send_log, 3, self._get_last_event_topic)
 
-    async def handle_proto_3(self, data: List[Any]) -> None:
+    async def _handle_proto_3(self, data: List[Any]) -> None:
         if len(data) < 4:
             logger.warning(f"RpcV1 [Proto 3]: Invalid event format: {data}")
             return

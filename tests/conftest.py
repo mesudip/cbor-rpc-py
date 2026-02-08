@@ -7,6 +7,8 @@ import re
 import time
 import asyncio
 
+from cbor_rpc.ssh.ssh_pipe import SshServer
+
 # Ensure the project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -65,7 +67,7 @@ def docker_host_ip():
     return "localhost"
 
 @pytest.fixture(scope="session")
-def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip, ssh_keys):
+def ssh_server_config(docker_client: docker.DockerClient, test_network, docker_host_ip, ssh_keys):
     container_name = "ssh-test-container-combined-auth"
     ssh_user = TEST_SSH_USER
     ssh_password = TEST_SSH_PASSWORD
@@ -85,8 +87,9 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
     print(f"\nBuilding Docker image '{SSHD_IMAGE_NAME}' from '{SSHD_DOCKERFILE_PATH}'...")
     try:
         docker_client.images.build(
-            path=SSHD_DOCKERFILE_PATH,
             tag=SSHD_IMAGE_NAME,
+            path=".",
+            dockerfile="tests/docker/sshd-python/Dockerfile",
             rm=True,
         )
     except docker.errors.BuildError as e:
@@ -140,7 +143,6 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
                     username=ssh_user,
                     password=ssh_password,
                     known_hosts=None,
-                    timeout=2,
                 )
                 conn.close()
                 return True
@@ -148,8 +150,6 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
                 return False
         
         for i in range(60):
-            if i%3==0:
-                print(i,"Attempting SSH connection to check readiness...")
             if asyncio.run(check_ssh_combined()):
                 ready = True
                 break
@@ -171,3 +171,21 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
         print("======================================")
         container.stop()
         container.remove()
+
+@pytest.fixture
+async def ssh_server(ssh_server_config):
+    """
+    Fixture providing an SshServer connected to the server.
+    """
+    container, host, port, username, password, _ = ssh_server_config
+    server = await SshServer.connect(
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        known_hosts=None
+    )
+    yield server
+    await server.close()
+
+

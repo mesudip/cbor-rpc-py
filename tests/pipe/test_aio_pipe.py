@@ -41,16 +41,18 @@ class FakeWriter:
         return None
 
 
-class TestAioPipe(AioPipe[bytes, bytes]):
-    pass
+class AioDummyPipe(AioPipe[bytes, bytes]):
+    
+    def __init__(self, reader = None, writer = None, chunk_size = 1024):
+        super().__init__(reader, writer, chunk_size)
 
 
-class NotifyFailPipe(TestAioPipe):
+class NotifyFailPipe(AioDummyPipe):
     async def _notify(self, event_type: str, *args: Any) -> None:
         raise RuntimeError(f"notify:{event_type}")
 
 
-class NotifyOncePipe(TestAioPipe):
+class NotifyOncePipe(AioDummyPipe):
     def __init__(self, reader: FakeReader, writer: FakeWriter):
         super().__init__(reader, writer)
         self._notified = False
@@ -65,12 +67,12 @@ class NotifyOncePipe(TestAioPipe):
 @pytest.mark.asyncio
 async def test_aio_pipe_init_requires_reader_and_writer():
     with pytest.raises(ValueError):
-        TestAioPipe(reader=FakeReader([]), writer=None)
+        AioDummyPipe(reader=FakeReader([]), writer=None)
 
 
 @pytest.mark.asyncio
 async def test_aio_pipe_setup_without_reader_writer():
-    pipe = TestAioPipe()
+    pipe = AioDummyPipe()
     with pytest.raises(RuntimeError):
         await pipe._setup_connection()
 
@@ -100,7 +102,7 @@ async def test_aio_pipe_read_loop_notify_error_emits_close():
 
 @pytest.mark.asyncio
 async def test_aio_pipe_read_loop_reader_error_emits_error():
-    pipe = TestAioPipe(FakeReader([ValueError("boom")]), FakeWriter())
+    pipe = AioDummyPipe(FakeReader([ValueError("boom")]), FakeWriter())
     errors: List[Any] = []
 
     def on_error(err: Exception) -> None:
@@ -114,7 +116,7 @@ async def test_aio_pipe_read_loop_reader_error_emits_error():
 
 @pytest.mark.asyncio
 async def test_aio_pipe_write_errors():
-    pipe = TestAioPipe(FakeReader([]), FakeWriter())
+    pipe = AioDummyPipe(FakeReader([]), FakeWriter())
 
     with pytest.raises(ConnectionError):
         await pipe.write(b"data")
@@ -137,7 +139,7 @@ async def test_aio_pipe_write_errors():
 
 @pytest.mark.asyncio
 async def test_aio_pipe_close_writer_exception_emits_error():
-    pipe = TestAioPipe(FakeReader([]), FakeWriter())
+    pipe = AioDummyPipe(FakeReader([]), FakeWriter())
     errors: List[Any] = []
 
     def on_error(err: Exception) -> None:
