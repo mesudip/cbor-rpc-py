@@ -48,9 +48,7 @@ class AbstractEmitter(ABC):
                 warnings.warn(f"Synchronous error in handler: {e}", RuntimeWarning)
 
     async def _notify(self, event_type: str, *args: Any) -> None:
-        """
-        
-        """
+        """ """
         for pipeline in self._pipelines.get(event_type, []):
             try:
                 if inspect.iscoroutinefunction(pipeline):

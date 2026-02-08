@@ -19,11 +19,8 @@ class JsonTransformer(Transformer[Any, Any]):
         self.encoding = encoding
 
     def encode(self, data: Any) -> bytes:
-        json_str = json.dumps(
-            data, ensure_ascii=False
-        )  # Always allow non-ASCII characters to pass through json.dumps
+        json_str = json.dumps(data, ensure_ascii=False)  # Always allow non-ASCII characters to pass through json.dumps
         return json_str.encode(self.encoding)
-
 
     def decode(self, data: Union[bytes, str, None]) -> Any:
         if data is None:

@@ -4,6 +4,7 @@ import pytest
 import asyncssh
 from cbor_rpc.ssh.ssh_pipe import SshPipe, SshServer
 
+
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_password_authentication(ssh_server_config):
     container, host, port, username, password, _ = ssh_server_config
@@ -12,14 +13,8 @@ async def test_ssh_pipe_with_password_authentication(ssh_server_config):
     server = None
     pipe = None
     try:
-        server = await SshServer.connect(
-            host=host,
-            port=port,
-            username=username,
-            password=password,
-            known_hosts=None
-        )
-        
+        server = await SshServer.connect(host=host, port=port, username=username, password=password, known_hosts=None)
+
         test_command = "echo 'Password auth successful!'"
         pipe = await server.run_command(command=test_command)
 
@@ -67,11 +62,7 @@ async def test_ssh_pipe_with_plain_key_authentication(ssh_server_config, ssh_key
     pipe = None
     try:
         server = await SshServer.connect(
-            host=host,
-            port=port,
-            username=username,
-            ssh_key_content=unencrypted_private_key_content,
-            known_hosts=None
+            host=host, port=port, username=username, ssh_key_content=unencrypted_private_key_content, known_hosts=None
         )
 
         test_command = "echo 'Plain key auth successful!'"
@@ -108,7 +99,7 @@ async def test_ssh_pipe_with_plain_key_authentication(ssh_server_config, ssh_key
             await pipe.terminate()
             print("SshPipe closed for plain key authentication test.")
         if server:
-             await server.close()
+            await server.close()
 
 
 @pytest.mark.asyncio
@@ -129,7 +120,7 @@ async def test_ssh_pipe_with_encrypted_key_authentication(ssh_server_config, ssh
             username=username,
             ssh_key_content=private_key_content,
             ssh_key_passphrase=passphrase,
-            known_hosts=None
+            known_hosts=None,
         )
 
         test_command = "echo 'Encrypted key auth successful!'"

@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     class SimpleTcpServer(TcpServer):
         async def accept(self, pipe: TcpPipe) -> bool:
-            print("Accepted from client",pipe.get_peer_info())
+            print("Accepted from client", pipe.get_peer_info())
             pipe.on("data", lambda data: print("Received from Client:", data))
             pipe.on("error", lambda error: logging.exception("TCP pipe error", exc_info=error))
             rpc_pipe = JsonStreamTransformer().apply_transformer(pipe)

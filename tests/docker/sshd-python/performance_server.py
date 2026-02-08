@@ -28,7 +28,7 @@ class PerformanceServer(RpcV1Server):
 
     async def handle_method_call(self, connection_id, context, method, args):
         if method == "echo":
-             return args[0]
+            return args[0]
         elif method == "download_random":
             size = args[0]
             # Generate random bytes? Generating 10MB random might be slow in python if clear.

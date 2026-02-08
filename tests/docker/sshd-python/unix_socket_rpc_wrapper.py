@@ -110,16 +110,8 @@ async def main() -> None:
     ]
 
     if proc is not None and proc.stdout and proc.stderr:
-        tasks.append(
-            asyncio.create_task(
-                _forward_process_stream(proc.stdout, client_writer, write_lock, 3, "stdout")
-            )
-        )
-        tasks.append(
-            asyncio.create_task(
-                _forward_process_stream(proc.stderr, client_writer, write_lock, 2, "stderr")
-            )
-        )
+        tasks.append(asyncio.create_task(_forward_process_stream(proc.stdout, client_writer, write_lock, 3, "stdout")))
+        tasks.append(asyncio.create_task(_forward_process_stream(proc.stderr, client_writer, write_lock, 2, "stderr")))
 
     try:
         await asyncio.gather(*tasks)

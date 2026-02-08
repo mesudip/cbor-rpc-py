@@ -17,6 +17,7 @@ SSHD_CONTAINER_NAME = "test-sshd-container"
 # Assuming running from root
 SSHD_DOCKERFILE_PATH = "./tests/docker/sshd-python"
 
+
 @pytest.fixture(scope="session")
 def ssh_keys():
     private_key_obj = asyncssh.generate_private_key("ssh-rsa")
@@ -30,11 +31,13 @@ def ssh_keys():
         "passphrase": passphrase,
     }
 
+
 @pytest.fixture(scope="session")
 def docker_client():
     client = docker.from_env()
     yield client
     client.close()
+
 
 @pytest.fixture(scope="session")
 def test_network(docker_client: docker.DockerClient):
@@ -48,6 +51,7 @@ def test_network(docker_client: docker.DockerClient):
     network = docker_client.networks.create(network_name, driver="bridge")
     yield network
     network.remove()
+
 
 @pytest.fixture(scope="session")
 def docker_host_ip():
@@ -64,6 +68,7 @@ def docker_host_ip():
             return host
     return "localhost"
 
+
 @pytest.fixture(scope="session")
 def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip, ssh_keys):
     container_name = "ssh-test-container-combined-auth"
@@ -74,8 +79,8 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
     try:
         existing_container = docker_client.containers.get(container_name)
         # Check if it is running
-        if existing_container.status == 'running':
-             existing_container.stop()
+        if existing_container.status == "running":
+            existing_container.stop()
         existing_container.remove()
     except docker.errors.NotFound:
         pass
@@ -92,7 +97,7 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
     except docker.errors.BuildError as e:
         print(f"Failed to build Docker image: {e}")
         for line in e.build_log:
-             print(line)
+            print(line)
         raise RuntimeError(f"Failed to build Docker image '{SSHD_IMAGE_NAME}'.")
 
     print(f"\nStarting {SSHD_IMAGE_NAME} container...")
@@ -118,7 +123,7 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
         container.reload()
         host_port = None
         ready = False
-        
+
         # Wait for port mapping
         for _ in range(30):
             container.reload()
@@ -126,9 +131,9 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
                 host_port = container.ports["2222/tcp"][0]["HostPort"]
                 break
             time.sleep(1)
-            
+
         if not host_port:
-             raise RuntimeError("Port 2222 not exposed")
+            raise RuntimeError("Port 2222 not exposed")
 
         # Wait for SSH to be ready
         async def check_ssh_combined():
@@ -146,17 +151,17 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
                 return True
             except (asyncssh.Error, OSError):
                 return False
-        
+
         for i in range(60):
-            if i%3==0:
-                print(i,"Attempting SSH connection to check readiness...")
+            if i % 3 == 0:
+                print(i, "Attempting SSH connection to check readiness...")
             if asyncio.run(check_ssh_combined()):
                 ready = True
                 break
             time.sleep(1)
 
         if not ready:
-            print(container.logs().decode('utf-8'))
+            print(container.logs().decode("utf-8"))
             raise RuntimeError("SSH Server not ready")
 
         yield container, docker_host_ip, host_port, ssh_user, ssh_password, ssh_keys["unencrypted_private"]
@@ -165,9 +170,9 @@ def ssh_server(docker_client: docker.DockerClient, test_network, docker_host_ip,
         print("Stopping SSH Server container...")
         print("================ Logs ================")
         try:
-            print(container.logs().decode('utf-8'))
+            print(container.logs().decode("utf-8"))
         except:
-             pass
+            pass
         print("======================================")
         container.stop()
         container.remove()

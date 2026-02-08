@@ -97,7 +97,9 @@ async def test_pipeline_and_notify():
     expected_subscribers = ["async_handler1_event2", "sync_handler1_event2"]
 
     # Verify handlers ran after pipelines
-    assert set(events[3:]) == set(expected_subscribers), f"Subscribers expected {expected_subscribers}, got {events[3:]}"
+    assert set(events[3:]) == set(
+        expected_subscribers
+    ), f"Subscribers expected {expected_subscribers}, got {events[3:]}"
 
     # Explicitly assert precedence
     for p in expected_pipelines:
@@ -168,7 +170,7 @@ async def test_pipeline_failure():
         await asyncio.sleep(0.01)
         events.append(f"async_pipeline1_{data}")
         raise ValueError("Pipeline failed")
-    
+
     async def async_pipeline2(data: Any):
         events.append(f"async_pipeline2_{data}")
 

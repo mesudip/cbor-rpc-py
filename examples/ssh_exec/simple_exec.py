@@ -3,6 +3,7 @@ import argparse
 import sys
 from cbor_rpc.ssh.ssh_pipe import SshServer
 
+
 async def main():
     parser = argparse.ArgumentParser(description="Execute a remote command using SshPipe.")
     parser.add_argument("--host", required=True, help="SSH Host")
@@ -10,11 +11,11 @@ async def main():
     parser.add_argument("--user", required=True, help="SSH Username")
     parser.add_argument("--password", help="SSH Password")
     parser.add_argument("command", help="Command to execute")
-    
+
     args = parser.parse_args()
-    
+
     print(f"Connecting to {args.user}@{args.host}:{args.port}...")
-    
+
     server = SshServer(
         host=args.host,
         port=args.port,
@@ -29,7 +30,7 @@ async def main():
         return
 
     print(f"Connected. Executing: {args.command}")
-    
+
     try:
         pipe = await server.run_command(args.command)
     except Exception as e:
@@ -63,6 +64,7 @@ async def main():
     await done_event.wait()
     await pipe.terminate()
     await server.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

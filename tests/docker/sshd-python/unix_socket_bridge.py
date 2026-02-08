@@ -22,9 +22,7 @@ async def main() -> None:
     stdin_protocol = asyncio.StreamReaderProtocol(stdin_reader)
     await loop.connect_read_pipe(lambda: stdin_protocol, sys.stdin)
 
-    stdout_transport, stdout_protocol = await loop.connect_write_pipe(
-        asyncio.streams.FlowControlMixin, sys.stdout
-    )
+    stdout_transport, stdout_protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, sys.stdout)
     stdout_writer = asyncio.StreamWriter(stdout_transport, stdout_protocol, stdin_reader, loop)
 
     sock_reader, sock_writer = await asyncio.open_unix_connection(socket_path)

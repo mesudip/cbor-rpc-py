@@ -14,13 +14,13 @@ class SshPipe(AioPipe[bytes, bytes]):
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
-        ssh_channel: asyncssh.SSHClientChannel|asyncssh.SSHClientProcess,
+        ssh_channel: asyncssh.SSHClientChannel | asyncssh.SSHClientProcess,
     ):
         super().__init__(reader, writer)
 
         self._stderr_task = asyncio.create_task(self._stderr_loop())
         self._ssh_channel = ssh_channel
-        
+
     async def _stderr_loop(self) -> None:
         """
         Continuously read data from the connection and emit data events.
@@ -51,6 +51,7 @@ class SshPipe(AioPipe[bytes, bytes]):
         finally:
             if not self._stderr_task.cancelled():
                 self._stderr_task.cancel()
+
     async def terminate(self) -> None:
         """
         Closes the SSH channel.
@@ -69,15 +70,16 @@ class SshPipe(AioPipe[bytes, bytes]):
             except asyncio.TimeoutError:
                 # If timed out, try to force terminate
 
-                    if isinstance(self._ssh_channel, asyncssh.SSHClientChannel):
-                        cl_chan: asyncssh.SSHClientChannel = self._ssh_channel
-                        print("Force aborting SSH channel...")
-                        cl_chan.abort()
-                    elif isinstance(self._ssh_channel, asyncssh.SSHClientProcess):
-                        print("Force killing SSH process...")
-                        cl_proc: asyncssh.SSHClientProcess = self._ssh_channel
-                        cl_proc.kill()    
+                if isinstance(self._ssh_channel, asyncssh.SSHClientChannel):
+                    cl_chan: asyncssh.SSHClientChannel = self._ssh_channel
+                    print("Force aborting SSH channel...")
+                    cl_chan.abort()
+                elif isinstance(self._ssh_channel, asyncssh.SSHClientProcess):
+                    print("Force killing SSH process...")
+                    cl_proc: asyncssh.SSHClientProcess = self._ssh_channel
+                    cl_proc.kill()
             await self._ssh_channel.wait_closed()  # Ensure the AioPipe is fully closed
+
     async def wait_closed(self) -> None:
         await self._ssh_channel.wait_closed()
         if self._ssh_channel:
@@ -88,8 +90,9 @@ class SshServer:
     """
     Manages an SSH connection and allows spawning multiple SshPipes or Unix connections.
     """
+
     def __init__(
-        self, 
+        self,
         connection: asyncssh.SSHClientConnection,
         host: str,
         port: int = 22,
@@ -100,7 +103,7 @@ class SshServer:
 
     @classmethod
     async def connect(
-        cls, 
+        cls,
         host: str,
         port: int = 22,
         username: Optional[str] = None,
@@ -109,9 +112,9 @@ class SshServer:
         client_keys: Optional[list] = None,
         ssh_key_content: Optional[str] = None,
         ssh_key_passphrase: Optional[str] = None,
-        **connect_kwargs
+        **connect_kwargs,
     ) -> "SshServer":
-        
+
         keys = client_keys
         if ssh_key_content:
             key = asyncssh.import_private_key(ssh_key_content, passphrase=ssh_key_passphrase)
@@ -119,7 +122,7 @@ class SshServer:
                 keys.append(key)
             else:
                 keys = [key]
-        
+
         connection = await asyncssh.connect(
             host=host,
             port=port,
@@ -143,7 +146,7 @@ class SshServer:
         """
         if not self._connection:
             raise RuntimeError("SshServer is not connected. Call connect() first.")
-            
+
         channel = await self._connection.create_process(command, term_type=None, encoding=None, stdin=asyncssh.PIPE)
 
         reader = channel.stdout
@@ -153,10 +156,12 @@ class SshServer:
         # We need to setup connection for the AioPipe
         await pipe._setup_connection()
         return pipe
+
     @staticmethod
     async def connect_and_run(args="..."):
         # TODO
         pass
+
     async def open_unix_connection(self, path: str) -> AioPipe:
         """
         Opens a direct stream connection to a Unix socket on the remote host.

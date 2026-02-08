@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class RpcCore(RpcClient):
     protocol_id = 1
+
     def __init__(self, pipe: EventPipe[Any, Any]):
         self.pipe = pipe
         self._counter = 0
@@ -62,7 +63,7 @@ class RpcCore(RpcClient):
         sub_proto_id = data[1]
 
         # Responses: [1, 0, id, result] (Success) or [1, 1, id, error] (Error)
-        if sub_proto_id <2:
+        if sub_proto_id < 2:
             if len(data) < 4:
                 logger.warning(f"RpcCore [Proto 1]: Invalid response format: {data}")
                 return
@@ -77,7 +78,9 @@ class RpcCore(RpcClient):
                 else:  # Error
                     await promise.reject(payload)
             else:
-                logger.warning(f"Received rpc reply for expired request id: {id_}, success={sub_proto_id==0}, data={payload}")
+                logger.warning(
+                    f"Received rpc reply for expired request id: {id_}, success={sub_proto_id==0}, data={payload}"
+                )
 
         # Method Call (2) or Fire (3): [1, 2/3, id, method, params]
         elif sub_proto_id == 2 or sub_proto_id == 3:
@@ -95,6 +98,7 @@ class RpcCore(RpcClient):
                 result = self.handle_method_call(context, method, params)
 
                 if sub_proto_id == 2:  # Expect Response
+
                     async def handle_response() -> None:
                         try:
                             resolved_result = await self._resolve_result(result)
@@ -112,6 +116,7 @@ class RpcCore(RpcClient):
                             await self._resolve_result(result)
                         except Exception as e:
                             logger.error(f"Fired method error: {method}, params={params}, error={e}")
+
                     asyncio.create_task(handle_fire())
 
             except Exception as e:
@@ -121,7 +126,6 @@ class RpcCore(RpcClient):
                     logger.error(f"Fired method error: {method}, params={params}, error={e}")
         else:
             logger.warning(f"RpcCore [Proto 1]: Unknown sub-protocol: {sub_proto_id}")
-
 
     async def _handle_proto_2(self, data: List[Any]) -> None:
         """Handle Protocol 2 (Logging) messages."""
@@ -147,7 +151,6 @@ class RpcCore(RpcClient):
 
     async def _handle_proto_3(self, data: List[Any]) -> None:
         logger.warning(f"RpcCore [Proto 3]: Unsupported event message: {data}")
-
 
     async def call_method(self, method: str, *args: Any) -> Any:
         counter = self._counter

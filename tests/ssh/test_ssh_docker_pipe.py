@@ -10,6 +10,7 @@ import pytest
 
 from cbor_rpc.ssh.ssh_pipe import SshPipe, SshServer
 
+
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_hello_world_emitter(ssh_server):
     print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port}...")
@@ -17,7 +18,6 @@ async def test_ssh_pipe_with_hello_world_emitter(ssh_server):
     try:
         emitter_command = "sh -c 'while true; do echo \"hello world\"; sleep 1; done'"
         pipe = await ssh_server.run_command(command=emitter_command)
-
 
         received_event = asyncio.Event()
         received_data = []
@@ -46,9 +46,7 @@ async def test_ssh_pipe_with_hello_world_emitter(ssh_server):
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_echo_back_command(ssh_server):
-    print(
-        f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} for echo-back test..."
-    )
+    print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} for echo-back test...")
     pipe = None
     try:
         echo_back_command = "python3 /usr/local/bin/echo_back.py"
@@ -95,9 +93,7 @@ async def test_ssh_pipe_with_echo_back_command(ssh_server):
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_binary_data(ssh_server):
-    print(
-        f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} for binary data emitter test..."
-    )
+    print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} for binary data emitter test...")
     pipe = None
     try:
         emitter_binary_command = "python3 /usr/local/bin/binary_emitter.py"
@@ -144,7 +140,7 @@ async def test_ssh_pipe_with_binary_data(ssh_server):
 @pytest.mark.asyncio
 async def test_ssh_pipe_multiplexing(ssh_server):
     print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} with multiplexing...")
-    
+
     # 1. Establish the main connection (pipe1)
     pipe1 = None
     pipe2 = None
@@ -161,7 +157,7 @@ async def test_ssh_pipe_multiplexing(ssh_server):
             received_data1.append(data)
             if b"Process 1" in data:
                 received_event1.set()
-        
+
         pipe1.pipeline("data", on_data1)
 
         # 2. Create a second pipe using the same connection (pipe2)
@@ -175,7 +171,7 @@ async def test_ssh_pipe_multiplexing(ssh_server):
             received_data2.append(data)
             if b"Process 2" in data:
                 received_event2.set()
-        
+
         pipe2.pipeline("data", on_data2)
 
         # Verify both channels are open concurrently (multiplexing check)
@@ -190,44 +186,43 @@ async def test_ssh_pipe_multiplexing(ssh_server):
         await asyncio.wait_for(asyncio.gather(received_event1.wait(), received_event2.wait()), timeout=10)
         duration = time.time() - start_time
         print(f"Multiplexed execution took {duration:.2f} seconds.")
-        
-        # Simple heuristic: if it was serial, it would be > 4s (2s + 2s). 
+
+        # Simple heuristic: if it was serial, it would be > 4s (2s + 2s).
         # Parallel is ~2s. Allow some buffer.
         assert duration < 3.8, "Processes should run in parallel"
 
         assert b"Process 1" in b"".join(received_data1)
         assert b"Process 2" in b"".join(received_data2)
-        
+
         # 3. Verify they are on the same connection
         # Note: SSHClientProcess doesn't expose get_connection() directly in older asyncssh versions or standard API
         # But we know they were created from the same ssh_server instance which holds one connection
         assert not ssh_server._connection.is_closed()
-        
+
         # 4. Terminate pipe2 (should NOT close connection)
         await pipe2.terminate()
         # Give a moment for cleanup
         await asyncio.sleep(0.1)
         # Connection should still be open
         assert not ssh_server._connection.is_closed()
-        
+
         # 5. Connect a third pipe to verify connection is still usable
         command3 = "echo 'Process 3'"
         pipe3 = await ssh_server.run_command(command=command3)
         # We won't wait for output, just checking creation worked and needed to close it
         await pipe3.terminate()
 
-
     except Exception as e:
         pytest.fail(f"Multiplexing test failed: {e}")
     finally:
         # Clean up
         if pipe1:
-             # Terminate pipe1 channel
+            # Terminate pipe1 channel
             await pipe1.terminate()
-        
+
         if pipe2:
-             # Just in case it wasn't closed in test
-             await pipe2.terminate()
-        
+            # Just in case it wasn't closed in test
+            await pipe2.terminate()
+
         if pipe3:
-             await pipe3.terminate()
+            await pipe3.terminate()

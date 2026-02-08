@@ -42,8 +42,8 @@ class FakeWriter:
 
 
 class AioDummyPipe(AioPipe[bytes, bytes]):
-    
-    def __init__(self, reader = None, writer = None, chunk_size = 1024):
+
+    def __init__(self, reader=None, writer=None, chunk_size=1024):
         super().__init__(reader, writer, chunk_size)
 
 

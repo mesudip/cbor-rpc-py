@@ -31,20 +31,22 @@ async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, serve
 
     raise RuntimeError(f"Timed out waiting for remote socket: {socket_path}")
 
+
 @pytest.fixture
 async def unix_socket_pipe():
     import uuid
     from pathlib import Path
+
     socket_path = Path(tempfile.gettempdir()) / f"cbor_rpc_test_{uuid.uuid4().hex[:8]}.sock"
     if socket_path.exists():
         socket_path.unlink()
     # Path to the actual server script
-    server_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "rpc_server.py"))
+    server_script = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "rpc_server.py")
+    )
     # Start the server process
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, server_script,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        sys.executable, server_script, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     await asyncio.sleep(2)
     # The server script uses /tmp/cbor-rpc.sock as the socket path
@@ -69,6 +71,7 @@ async def unix_socket_pipe():
             except OSError:
                 pass
 
+
 @pytest.fixture
 async def ssh_unix_socket_pipe(ssh_server: SshServer):
     # Start the server process inside the container
@@ -78,9 +81,7 @@ async def ssh_unix_socket_pipe(ssh_server: SshServer):
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
     wrapper_pipe = None
     try:
-        wrapper_pipe = await ssh_server.run_command(
-            f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}"
-        )
+        wrapper_pipe = await ssh_server.run_command(f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}")
         pipe = wrapper_pipe
         transformer = CborStreamTransformer().apply_transformer(pipe)
         yield transformer
@@ -93,13 +94,14 @@ async def ssh_unix_socket_pipe(ssh_server: SshServer):
         except:
             pass
 
+
 @pytest.mark.asyncio
 async def test_rpc_all_methods_local_unix(unix_socket_pipe):
     rpc_client = RpcV1.read_only_client(unix_socket_pipe)
     await run_rpc_all_methods(rpc_client)
 
+
 @pytest.mark.asyncio
 async def test_rpc_all_methods_ssh_unix(ssh_unix_socket_pipe):
     rpc_client = RpcV1.read_only_client(ssh_unix_socket_pipe)
     await run_rpc_all_methods(rpc_client)
-

@@ -36,6 +36,7 @@ class CoreOnlyRpc(RpcCore):
         if method == "boom":
             raise Exception("boom")
         if method == "nested":
+
             async def inner() -> str:
                 return "ok"
 
@@ -49,6 +50,7 @@ class CoreOnlyRpc(RpcCore):
 @pytest.mark.asyncio
 async def test_rpc_v1_proto_validation_and_logging(caplog):
     import logging
+
     caplog.set_level(logging.INFO)
     pipe_a, pipe_b = EventPipe.create_inmemory_pair()
     rpc = RpcV1.make_rpc_v1(pipe_a, "id", _noop_handler)
@@ -66,7 +68,7 @@ async def test_rpc_v1_proto_validation_and_logging(caplog):
     await asyncio.sleep(0.05)
 
     assert rpc._peer_log_level == 3
-    
+
     logs = [r.message for r in caplog.records]
     assert any("Invalid response format" in log for log in logs)
     assert any("Invalid call format" in log for log in logs)
