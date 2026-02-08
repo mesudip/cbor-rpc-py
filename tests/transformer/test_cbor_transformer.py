@@ -100,20 +100,42 @@ class TestCborTransformer:
         with pytest.raises(TypeError):
             transformer.decode(None)
 
-    async def test_cbor_transformer_multiple_separate_writes(self, server_raw, client_cbor):
+    async def test_cbor_transformer_multiple_separate_writes(self, server_raw, client_cbor, client_raw):
         client_transformed_pipe = client_cbor
 
         received_data_queue = TimeoutQueue()
-        client_transformed_pipe.on("data", received_data_queue.put_nowait)
+        received_errors = []
+        client_transformed_pipe.pipeline("data", received_data_queue.put_nowait)
+        client_transformed_pipe.on("error", lambda e: received_errors.append(e))
 
-        await server_raw.write(cbor2.dumps({"a": 1}))
-        await server_raw.write(cbor2.dumps({"b": 2}))
-
+        assert await server_raw.write(cbor2.dumps({"a": 1}))
         decoded1 = await received_data_queue.get()
+        await asyncio.sleep(0.05)
+        assert await server_raw.write(cbor2.dumps({"b": 2}))
+
+        assert [] == received_errors, f"Expected no errors, got: {received_errors}"
         decoded2 = await received_data_queue.get()
 
         assert decoded1 == {"a": 1}
         assert decoded2 == {"b": 2}
+
+    async def test_cbor_transformer_single_concatenated_write(self, server_raw, client_cbor):
+        client_transformed_pipe = client_cbor
+
+        received_data_queue = TimeoutQueue()
+        received_errors = []
+        client_transformed_pipe.pipeline("data", received_data_queue.put_nowait)
+        client_transformed_pipe.on("error", lambda e: received_errors.append(e))
+
+        concatenated = cbor2.dumps({"a": 1}) + cbor2.dumps({"b": 2})
+        assert await server_raw.write(concatenated)
+
+        decoded1 = await received_data_queue.get()
+        assert decoded1 == {"a": 1}
+        assert [] == received_errors, f"Expected no errors, got: {received_errors}"
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(received_data_queue.get(), timeout=0.1)
 
     async def test_cbor_transformer_encode_error_on_write(self, server_raw, client_cbor):
         client_transformed_pipe = client_cbor
@@ -188,6 +210,43 @@ class TestCborStreamTransformer:
         assert decoded1 == obj1
         assert decoded2 == obj2
         assert decoded3 == obj3
+
+    async def test_cbor_stream_transformer_single_concatenated_write(self, client_raw, server_raw):
+        cbor_stream_transformer = CborStreamTransformer()
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
+
+        received_data_queue = TimeoutQueue()
+        received_errors = []
+        client_transformed_pipe.on("data", received_data_queue.put_nowait)
+        client_transformed_pipe.on("error", lambda e: received_errors.append(e))
+
+        concatenated = cbor2.dumps({"a": 1}) + cbor2.dumps({"b": 2})
+        await server_raw.write(concatenated)
+
+        decoded1 = await received_data_queue.get()
+        decoded2 = await received_data_queue.get()
+        assert decoded1 == {"a": 1}
+        assert decoded2 == {"b": 2}
+        assert [] == received_errors, f"Expected no errors, got: {received_errors}"
+
+    async def test_cbor_stream_transformer_delayed_separate_writes(self, client_raw, server_raw):
+        cbor_stream_transformer = CborStreamTransformer()
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
+
+        received_data_queue = TimeoutQueue()
+        received_errors = []
+        client_transformed_pipe.on("data", received_data_queue.put_nowait)
+        client_transformed_pipe.on("error", lambda e: received_errors.append(e))
+
+        assert await server_raw.write(cbor2.dumps({"a": 1}))
+        decoded1 = await received_data_queue.get()
+        await asyncio.sleep(0.05)
+        assert await server_raw.write(cbor2.dumps({"b": 2}))
+
+        decoded2 = await received_data_queue.get()
+        assert decoded1 == {"a": 1}
+        assert decoded2 == {"b": 2}
+        assert [] == received_errors, f"Expected no errors, got: {received_errors}"
 
     async def test_cbor_stream_transformer_fragmented_objects(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
