@@ -10,7 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/mesudip/cbor-rpc-py ",
     packages=find_packages(include=["cbor_rpc", "cbor_rpc.*"]),
-    install_requires=["asyncssh>=2.14.0", "bcrypt", "cbor2"],
+    install_requires=["asyncssh>=2.14.0", "bcrypt", "cbor2", "ijson[yajl]"],
     extras_require={
         "test": ["pytest>=8.3.2", "pytest-asyncio>=0.24.0", "pytest-cov>=5.0.0", "docker"],
     },

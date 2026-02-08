@@ -114,10 +114,13 @@ class TestJsonTransformerPipeInteraction:
         error_queue = asyncio.Queue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
-        await client_transformed_pipe.write(original_data)
+        with pytest.raises(UnicodeEncodeError):
+            await client_transformed_pipe.write(original_data)
 
         error = await asyncio.wait_for(error_queue.get(), timeout=DEFAULT_TIMEOUT)
         assert isinstance(error, UnicodeEncodeError)
+        await asyncio.sleep(0)
+        assert client_raw_pipe._closed is True
 
     async def test_json_transformer_decoding_error_on_read(self, json_pipe):
         client_raw_pipe, server_raw_pipe, client_transformed_pipe, _ = json_pipe
@@ -159,10 +162,13 @@ class TestJsonTransformerPipeInteraction:
         error_queue = asyncio.Queue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
-        await client_transformed_pipe.write(non_serializable_data)
+        with pytest.raises(TypeError):
+            await client_transformed_pipe.write(non_serializable_data)
 
         error = await asyncio.wait_for(error_queue.get(), timeout=DEFAULT_TIMEOUT)
         assert isinstance(error, TypeError)
+        await asyncio.sleep(0)
+        assert client_raw_pipe._closed is True
 
     async def test_json_transformer_pipe_termination(self, json_pipe):
         client_raw_pipe, _server_raw_pipe, client_transformed_pipe, _ = json_pipe
@@ -179,8 +185,12 @@ class TestJsonTransformerPipeInteraction:
 
         await client_raw_pipe.terminate()
 
-        result = await client_transformed_pipe.write({"test": "data"})
-        assert result is False
+        if isinstance(client_raw_pipe, TcpPipe):
+            with pytest.raises(ConnectionError):
+                await client_transformed_pipe.write({"test": "data"})
+        else:
+            result = await client_transformed_pipe.write({"test": "data"})
+            assert result is False
 
     async def test_json_transformer_pipe_read_after_termination(self, json_pipe):
         _client_raw_pipe, server_raw_pipe, client_transformed_pipe, _ = json_pipe

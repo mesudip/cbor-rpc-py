@@ -81,6 +81,10 @@ async def test_event_transformer_pipe_write_error():
         errors.append(err)
 
     tpipe.on("error", on_error)
-    ok = await tpipe.write("encode_error")
-    assert ok is False
+
+    with pytest.raises(ValueError):
+        await tpipe.write("encode_error")
+
     assert errors
+    await asyncio.sleep(0)
+    assert base_a._closed is True

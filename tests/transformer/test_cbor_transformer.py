@@ -144,11 +144,13 @@ class TestCborTransformer:
         server_raw.on("data", received_data_queue.put_nowait)
 
         unserializable = {"func": lambda x: x}
-        result = await client_transformed_pipe.write(unserializable)
+        with pytest.raises(Exception):
+            await client_transformed_pipe.write(unserializable)
 
-        assert result is False
         error = await asyncio.wait_for(error_queue.get(), timeout=1)
         assert isinstance(error, Exception)
+        await asyncio.sleep(0)
+        assert client_transformed_pipe.pipe._closed is True
 
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(received_data_queue.get(), timeout=0.1)
@@ -163,8 +165,12 @@ class TestCborTransformer:
 
         await close_queue.get()
 
-        result = await client_transformed_pipe.write({"after": "close"})
-        assert result is False
+        if isinstance(client_raw, TcpPipe):
+            with pytest.raises(ConnectionError):
+                await client_transformed_pipe.write({"after": "close"})
+        else:
+            result = await client_transformed_pipe.write({"after": "close"})
+            assert result is False
 
 
 @pytest.mark.asyncio
@@ -346,8 +352,12 @@ class TestCborStreamTransformer:
 
         await close_queue.get()
 
-        result = await client_transformed_pipe.write({"after": "close"})
-        assert result is False
+        if isinstance(client_raw, TcpPipe):
+            with pytest.raises(ConnectionError):
+                await client_transformed_pipe.write({"after": "close"})
+        else:
+            result = await client_transformed_pipe.write({"after": "close"})
+            assert result is False
 
 
 @pytest.mark.asyncio

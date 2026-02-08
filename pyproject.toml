@@ -14,7 +14,8 @@ dependencies = [
     "asyncssh>=2.14.0",
     "bcrypt",
     "cbor2",
-    "docker"
+    "docker",
+    "ijson[yajl]"
 ]
 
 [build-system]

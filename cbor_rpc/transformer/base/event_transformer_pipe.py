@@ -71,7 +71,9 @@ class EventTransformerPipe(EventPipe[T1, T2]):
             return await self.pipe.write(encoded)
         except Exception as e:
             self._emit("error", e)
-            return False
+            # Fail fast: close the pipe so the remote side sees the failure.
+            await self.terminate()
+            raise
 
     async def terminate(self, *args: Any) -> None:
         await self.pipe.terminate(*args)
