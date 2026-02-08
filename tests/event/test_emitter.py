@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Any
 
 import pytest
@@ -53,42 +54,55 @@ async def test_pipeline_and_notify():
         events.append(f"async_handler1_{data}")
 
     def sync_handler1(data: Any):
+        time.sleep(0.01)
         events.append(f"sync_handler1_{data}")
 
     async def async_pipeline1(data: Any):
         await asyncio.sleep(0.01)
         events.append(f"async_pipeline1_{data}")
 
-    def sync_pipeline1(data: Any):
-        events.append(f"sync_pipeline1_{data}")
-
     async def async_pipeline2(data: Any):
-        await asyncio.sleep(0.01)
+        # Slow pipeline
+        await asyncio.sleep(0.05)
         events.append(f"async_pipeline2_{data}")
+
+    async def async_pipeline3(data: Any):
+        # Fast pipeline
+        await asyncio.sleep(0.01)
+        events.append(f"async_pipeline3_{data}")
 
     emitter.on("test", async_handler1)
     emitter.on("test", sync_handler1)
     emitter.pipeline("test", async_pipeline1)
-    emitter.pipeline("test", sync_pipeline1)
     emitter.pipeline("test", async_pipeline2)
+    emitter.pipeline("test", async_pipeline3)
 
     await emitter._notify("test", "event2")
     await asyncio.sleep(0.02)
 
+    # Strictly sequential execution order:
+    # 1. async_pipeline1 (waits 0.01)
+    # 2. async_pipeline2 (waits 0.05) -> If concurrent, this would finish LAST
+    # 3. async_pipeline3 (waits 0.01) -> If concurrent, this would finish BEFORE pipeline2
+
     expected_pipelines = [
         "async_pipeline1_event2",
-        "sync_pipeline1_event2",
         "async_pipeline2_event2",
+        "async_pipeline3_event2",
     ]
+
+    # Verify pipelines ran in strict order
+    assert events[:3] == expected_pipelines, f"Pipelines expected {expected_pipelines}, got {events[:3]}"
+
     expected_subscribers = ["async_handler1_event2", "sync_handler1_event2"]
-    pipeline_indices = [events.index(e) for e in expected_pipelines if e in events]
-    subscriber_indices = [events.index(e) for e in expected_subscribers if e in events]
-    assert all(
-        p < s for p in pipeline_indices for s in subscriber_indices
-    ), f"Pipelines {expected_pipelines} should precede subscribers {expected_subscribers} in {events}"
-    assert sorted(events) == sorted(
-        expected_pipelines + expected_subscribers
-    ), f"Expected {expected_pipelines + expected_subscribers}, got {events}"
+
+    # Verify handlers ran after pipelines
+    assert set(events[3:]) == set(expected_subscribers), f"Subscribers expected {expected_subscribers}, got {events[3:]}"
+
+    # Explicitly assert precedence
+    for p in expected_pipelines:
+        for s in expected_subscribers:
+            assert events.index(p) < events.index(s), f"Pipeline {p} executed after subscriber {s}"
 
 
 @pytest.mark.asyncio
@@ -154,11 +168,15 @@ async def test_pipeline_failure():
         await asyncio.sleep(0.01)
         events.append(f"async_pipeline1_{data}")
         raise ValueError("Pipeline failed")
+    
+    async def async_pipeline2(data: Any):
+        events.append(f"async_pipeline2_{data}")
 
     def sync_handler1(data: Any):
         events.append(f"sync_handler1_{data}")
 
     emitter.pipeline("test", async_pipeline1)
+    emitter.pipeline("test", async_pipeline2)
     emitter.on("test", sync_handler1)
 
     with pytest.raises(ValueError):
@@ -166,6 +184,10 @@ async def test_pipeline_failure():
 
     expected = ["async_pipeline1_event5"]
     assert events == expected, f"Expected {expected}, got {events}"
+
+    # Explicitly verify skipped execution
+    assert "async_pipeline2_event5" not in events, "Subsequent pipeline should be skipped"
+    assert "sync_handler1_event5" not in events, "Event subscribers should be skipped"
 
 
 @pytest.mark.asyncio

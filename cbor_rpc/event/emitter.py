@@ -48,26 +48,18 @@ class AbstractEmitter(ABC):
                 warnings.warn(f"Synchronous error in handler: {e}", RuntimeWarning)
 
     async def _notify(self, event_type: str, *args: Any) -> None:
-        tasks = []
-
+        """
+        
+        """
         for pipeline in self._pipelines.get(event_type, []):
-            if inspect.iscoroutinefunction(pipeline):
-                task = asyncio.create_task(pipeline(*args))
-                tasks.append(task)
-            else:
-                try:
+            try:
+                if inspect.iscoroutinefunction(pipeline):
+                    await pipeline(*args)
+                else:
                     pipeline(*args)
-                except Exception as e:
-                    self._emit("error", e)
-                    raise e
-
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    self._emit("error", result)
-                    # Must raise error to notify caller and block normal execution
-                    raise result
+            except Exception as e:
+                self._emit("error", e)
+                raise e
 
         self._emit(event_type, *args)
 

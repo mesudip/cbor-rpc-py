@@ -31,7 +31,7 @@ class EventTransformerPipe(EventPipe[T1, T2]):
     async def _handle_data(self, data: T2):
         try:
             decoded = await self.decode(data)
-            self._emit("data", decoded)
+            await self._notify("data", decoded)
         except NeedsMoreDataException:
             # If more data is needed, simply return and wait for the next chunk
             return
