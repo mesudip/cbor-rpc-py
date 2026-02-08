@@ -27,7 +27,7 @@ async def test_stdio_pipe_errors_without_process():
 @pytest.mark.asyncio
 async def test_stdio_pipe_start_process_and_terminate():
     pipe = await StdioPipe.start_process(sys.executable, "-c", "import time; time.sleep(0.2)")
-    pipe.terminate()
+    await pipe.terminate()
     code = await pipe.wait_for_process_termination()
     assert isinstance(code, int)
 
@@ -57,4 +57,4 @@ async def test_stdio_pipe_read_write():
     for i, (sent, received) in enumerate(zip(test_data, received_data)):
         assert received == sent, f"Mismatch at index {i}: expected {sent!r}, got {received!r}"
 
-    pipe.terminate()
+    await pipe.terminate()

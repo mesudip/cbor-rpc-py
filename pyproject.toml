@@ -13,7 +13,8 @@ dependencies = [
     "pytest-cov>=5.0.0",
     "asyncssh>=2.14.0",
     "bcrypt",
-    "cbor2"
+    "cbor2",
+    "docker"
 ]
 
 [build-system]
