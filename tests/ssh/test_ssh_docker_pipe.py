@@ -1,25 +1,24 @@
 import asyncio
-import pytest
-import docker
-import time
-import asyncssh
 import os
 import re
+import time
+
+import asyncssh
 import asyncssh.public_key
+import docker
+import pytest
 
 from cbor_rpc.ssh.ssh_pipe import SshPipe
 
-# Define a test user and password for the SSHD container
 TEST_SSH_USER = "testuser"
 TEST_SSH_PASSWORD = "testpassword"
-SSHD_IMAGE_NAME = "cbor-rpc-py-sshd-python"  # Custom image name
+SSHD_IMAGE_NAME = "cbor-rpc-py-sshd-python"
 SSHD_CONTAINER_NAME = "test-sshd-container"
-SSHD_DOCKERFILE_PATH = "./tests/docker/sshd-python"  # Path to the Dockerfile
+SSHD_DOCKERFILE_PATH = "./tests/docker/sshd-python"
 
 
 @pytest.fixture(scope="session")
 def ssh_keys():
-    """Generates SSH keys (plain and encrypted) and a passphrase for testing."""
     private_key_obj = asyncssh.generate_private_key("ssh-rsa")
     passphrase = "test_passphrase"
 
@@ -34,7 +33,6 @@ def ssh_keys():
 
 @pytest.fixture(scope="session")
 def docker_client():
-    """Provides a Docker client instance."""
     client = docker.from_env()
     yield client
     client.close()
@@ -42,11 +40,10 @@ def docker_client():
 
 @pytest.fixture(scope="session")
 def test_network(docker_client: docker.DockerClient):
-    """Provides a Docker network for containers to communicate."""
     network_name = "test-ssh-network"
     try:
         network = docker_client.networks.get(network_name)
-        network.remove()  # Clean up existing network if it exists
+        network.remove()
     except docker.errors.NotFound:
         pass
 
@@ -55,14 +52,13 @@ def test_network(docker_client: docker.DockerClient):
     network.remove()
 
 
-@pytest.fixture(scope="module")  # Changed scope to module as requested
+@pytest.fixture(scope="module")
 async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_network, docker_host_ip, ssh_keys):
     container_name = "ssh-test-container-combined-auth"
     ssh_user = TEST_SSH_USER
     ssh_password = TEST_SSH_PASSWORD
-    public_key = ssh_keys["unencrypted_public"]  # Use the unencrypted public key
+    public_key = ssh_keys["unencrypted_public"]
 
-    # Ensure previous container is stopped and removed
     try:
         existing_container = docker_client.containers.get(container_name)
         print(f"Found existing container '{container_name}'. Stopping and removing...")
@@ -74,13 +70,12 @@ async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_n
     except Exception as e:
         print(f"Error cleaning up existing container: {e}")
 
-    # Build the custom Docker image
     print(f"\nBuilding Docker image '{SSHD_IMAGE_NAME}' from '{SSHD_DOCKERFILE_PATH}'...")
     try:
         docker_client.images.build(
             path=SSHD_DOCKERFILE_PATH,
             tag=SSHD_IMAGE_NAME,
-            rm=True,  # Remove intermediate containers
+            rm=True,
         )
         print(f"Docker image '{SSHD_IMAGE_NAME}' built successfully.")
     except docker.errors.BuildError as e:
@@ -91,26 +86,26 @@ async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_n
     container = None
     try:
         container = docker_client.containers.run(
-            SSHD_IMAGE_NAME,  # Use the custom image name
+            SSHD_IMAGE_NAME,
             detach=True,
-            ports={"2222/tcp": None},  # Map container SSH port to a random host port
+            ports={"2222/tcp": None},
             network=test_network.name,
             name=container_name,
             environment={
                 "PUID": "1000",
                 "PGID": "1000",
                 "TZ": "Etc/UTC",
-                "PASSWORD_ACCESS": "true",  # Password access enabled
+                "PASSWORD_ACCESS": "true",
                 "USER_NAME": ssh_user,
                 "USER_PASSWORD": ssh_password,
-                "PUBLIC_KEY": public_key,  # Add one public key
+                "PUBLIC_KEY": public_key,
             },
             restart_policy={"Name": "no"},
         )
 
         container.reload()
         host_port = None
-        for _ in range(30):  # Wait up to 30 seconds for port mapping
+        for _ in range(30):
             container.reload()
             if "2222/tcp" in container.ports and container.ports["2222/tcp"]:
                 host_port = container.ports["2222/tcp"][0]["HostPort"]
@@ -122,13 +117,11 @@ async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_n
 
         print(f"SSH container with combined auth running on host port: {host_port}")
 
-        # Wait for SSH server to be ready
         ready = False
-        for i in range(60):  # wait up to 60 seconds
+        for i in range(60):
             try:
 
                 async def check_ssh_combined():
-                    # Check password authentication
                     try:
                         conn_pw = await asyncssh.connect(
                             docker_host_ip,
@@ -143,7 +136,6 @@ async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_n
                         print(f"Password auth check failed: {e}")
                         return False
 
-                    # Check public key authentication (unencrypted)
                     try:
                         conn_key = await asyncssh.connect(
                             docker_host_ip,
@@ -188,10 +180,8 @@ async def ssh_container_combined_auth(docker_client: docker.DockerClient, test_n
 
 @pytest.fixture(scope="session")
 def docker_host_ip():
-    """Determines the Docker host IP for connecting to containers."""
     docker_host = os.environ.get("DOCKER_HOST")
 
-    # Regex to match tcp://hostname:port, unix://socket, or ip:port
     regex = r"^(?:(tcp|unix)://)?([a-zA-Z0-9.-]+)(?::\d+)?$"
 
     if docker_host:
@@ -199,19 +189,13 @@ def docker_host_ip():
         if match:
             protocol, host = match.groups()
             if protocol == "unix":
-                # For unix sockets, connections are typically local, but asyncssh needs an IP
-                # In this case, 'localhost' is usually appropriate for host-to-container communication
                 return "localhost"
-            return host  # Return the IP or hostname
-    return "localhost"  # Default for local Docker setup
+            return host
+    return "localhost"
 
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_hello_world_emitter(ssh_container_combined_auth):
-    """
-    Tests SshPipe by connecting to an SSHD container that emits "hello world" every second.
-    This test uses password authentication.
-    """
     container, host, port, username, password, _ = ssh_container_combined_auth
 
     print(f"\nAttempting SshPipe connection to {host}:{port} as user {username} with password authentication...")
@@ -234,7 +218,6 @@ async def test_ssh_pipe_with_hello_world_emitter(ssh_container_combined_auth):
         def on_data_callback(data):
             print(f"test_ssh_pipe_with_hello_world_emitter: Received data: {data!r}")
             received_data.append(data)
-            # The data should be bytes, so compare directly with bytes literal
             if b"hello world" in data:
                 received_event.set()
 
@@ -256,16 +239,11 @@ async def test_ssh_pipe_with_hello_world_emitter(ssh_container_combined_auth):
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_password_authentication(ssh_container_combined_auth):
-    """
-    Tests SshPipe using username and password authentication.
-    This is a dedicated test for password authentication, ensuring it works as expected.
-    """
     container, host, port, username, password, _ = ssh_container_combined_auth
 
     print(f"\nAttempting SshPipe connection to {host}:{port} as user {username} with password authentication...")
     pipe = None
     try:
-        # Use a simple command to verify connection, e.g., 'echo'
         test_command = "echo 'Password auth successful!'"
         pipe = await SshPipe.connect(
             host=host,
@@ -300,7 +278,7 @@ async def test_ssh_pipe_with_password_authentication(ssh_container_combined_auth
     except asyncssh.Error as e:
         pytest.fail(f"SSH connection or command failed with password authentication: {e}")
     except asyncio.TimeoutError:
-        pytest.fail(f"SSH connection timed out with password authentication.")
+        pytest.fail("SSH connection timed out with password authentication.")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during password authentication test: {e}")
     finally:
@@ -311,10 +289,6 @@ async def test_ssh_pipe_with_password_authentication(ssh_container_combined_auth
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_plain_key_authentication(ssh_container_combined_auth, ssh_keys):
-    """
-    Tests SshPipe using a plain (unencrypted) SSH key for authentication.
-    This test is designed to run when sshd_container is configured for plain key auth.
-    """
     container, host, port, username, _, unencrypted_private_key_content = ssh_container_combined_auth
 
     print(f"\nAttempting SshPipe connection to {host}:{port} as user {username} with plain key authentication...")
@@ -326,7 +300,7 @@ async def test_ssh_pipe_with_plain_key_authentication(ssh_container_combined_aut
             host=host,
             port=port,
             username=username,
-            ssh_key_content=unencrypted_private_key_content,  # Use the private key content for authentication
+            ssh_key_content=unencrypted_private_key_content,
             known_hosts=None,
             timeout=10,
             command=test_command,
@@ -355,7 +329,7 @@ async def test_ssh_pipe_with_plain_key_authentication(ssh_container_combined_aut
     except asyncssh.Error as e:
         pytest.fail(f"SSH connection or command failed with plain key authentication: {e}")
     except asyncio.TimeoutError:
-        pytest.fail(f"SSH connection timed out with plain key authentication.")
+        pytest.fail("SSH connection timed out with plain key authentication.")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during plain key authentication test: {e}")
     finally:
@@ -366,10 +340,6 @@ async def test_ssh_pipe_with_plain_key_authentication(ssh_container_combined_aut
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_encrypted_key_authentication(ssh_container_combined_auth, ssh_keys):
-    """
-    Tests SshPipe using an encrypted SSH key with a passphrase for authentication.
-    This test is designed to run when sshd_container is configured for encrypted key auth.
-    """
     container, host, port, username, _, _ = ssh_container_combined_auth
 
     private_key_content = ssh_keys["encrypted_private"]
@@ -384,8 +354,8 @@ async def test_ssh_pipe_with_encrypted_key_authentication(ssh_container_combined
             host=host,
             port=port,
             username=username,
-            ssh_key_content=private_key_content,  # Use the private key content for authentication
-            ssh_key_passphrase=passphrase,  # Pass the passphrase
+            ssh_key_content=private_key_content,
+            ssh_key_passphrase=passphrase,
             known_hosts=None,
             timeout=10,
             command=test_command,
@@ -414,7 +384,7 @@ async def test_ssh_pipe_with_encrypted_key_authentication(ssh_container_combined
     except asyncssh.Error as e:
         pytest.fail(f"SSH connection or command failed with encrypted key authentication: {e}")
     except asyncio.TimeoutError:
-        pytest.fail(f"SSH connection timed out.")
+        pytest.fail("SSH connection timed out.")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during encrypted key authentication test: {e}")
     finally:
@@ -425,10 +395,6 @@ async def test_ssh_pipe_with_encrypted_key_authentication(ssh_container_combined
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_echo_back_command(ssh_container_combined_auth):
-    """
-    Tests SshPipe by connecting to an SSHD container and running 'echo_back.py' to echo back input.
-    This test uses password authentication.
-    """
     container, host, port, username, password, _ = ssh_container_combined_auth
 
     print(
@@ -436,14 +402,13 @@ async def test_ssh_pipe_with_echo_back_command(ssh_container_combined_auth):
     )
     pipe = None
     try:
-        # Use the custom Python echo-back script
         echo_back_command = "python3 /usr/local/bin/echo_back.py"
         pipe = await SshPipe.connect(
             host=host,
             port=port,
             username=username,
             password=password,
-            known_hosts=None,  # Disable host key checking for test container
+            known_hosts=None,
             timeout=10,
             command=echo_back_command,
         )
@@ -454,8 +419,6 @@ async def test_ssh_pipe_with_echo_back_command(ssh_container_combined_auth):
         def on_data_callback(data):
             print(f"test_ssh_pipe_with_echo_back_command: Received data chunk: {data!r}")
             received_data_chunks.append(data)
-            # For echo-back, we expect the full message to be returned
-            # We'll set the event once we receive some data.
             received_event.set()
 
         pipe.pipeline("data", on_data_callback)
@@ -475,12 +438,12 @@ async def test_ssh_pipe_with_echo_back_command(ssh_container_combined_auth):
             full_received_data.strip() == test_message.strip()
         ), f"Received data {full_received_data!r} should exactly match sent data {test_message!r}"
         print("Verification successful: Data echoed correctly by 'echo_back.py' script.")
-        await pipe.write_eof()  # Signal EOF to the remote process
+        await pipe.write_eof()
 
     except asyncssh.Error as e:
         pytest.fail(f"SSH connection or command failed: {e}")
     except asyncio.TimeoutError:
-        pytest.fail(f"SSH connection timed out.")
+        pytest.fail("SSH connection timed out.")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred: {e}")
     finally:
@@ -491,10 +454,6 @@ async def test_ssh_pipe_with_echo_back_command(ssh_container_combined_auth):
 
 @pytest.mark.asyncio
 async def test_ssh_pipe_with_binary_data(ssh_container_combined_auth):
-    """
-    Tests SshPipe by connecting to an SSHD container that emits raw binary data.
-    This test uses password authentication.
-    """
     container, host, port, username, password, _ = ssh_container_combined_auth
 
     print(
@@ -502,26 +461,23 @@ async def test_ssh_pipe_with_binary_data(ssh_container_combined_auth):
     )
     pipe = None
     try:
-        # Python script to continuously emit binary data
-        # Using os.write(1, ...) to write raw bytes to stdout
         emitter_binary_command = "python3 /usr/local/bin/binary_emitter.py"
         pipe = await SshPipe.connect(
             host=host,
             port=port,
             username=username,
             password=password,
-            known_hosts=None,  # Disable host key checking for test container
+            known_hosts=None,
             timeout=10,
             command=emitter_binary_command,
         )
 
         received_event = asyncio.Event()
         received_data_chunks = []
-        expected_binary_pattern = b"\xde\xad\xbe\xef\x00\x01\x02\x03\x80\xff\x7f"  # Updated pattern without newlines
+        expected_binary_pattern = b"\xde\xad\xbe\xef\x00\x01\x02\x03\x80\xff\x7f"
 
         def on_data_callback(data):
             print(f"test_ssh_pipe_with_binary_data: Received data chunk: {data!r}")
-            # Strip any potential carriage returns or newlines added by the shell
             cleaned_data = data.replace(b"\r", b"").replace(b"\n", b"")
             received_data_chunks.append(cleaned_data)
             if expected_binary_pattern in cleaned_data:
@@ -545,7 +501,7 @@ async def test_ssh_pipe_with_binary_data(ssh_container_combined_auth):
     except asyncssh.Error as e:
         pytest.fail(f"SSH connection or command failed: {e}")
     except asyncio.TimeoutError:
-        pytest.fail(f"SSH connection timed out.")
+        pytest.fail("SSH connection timed out.")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred: {e}")
     finally:

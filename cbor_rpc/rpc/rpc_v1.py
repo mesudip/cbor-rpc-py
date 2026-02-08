@@ -1,4 +1,5 @@
 import sys
+import logging
 from typing import Any, Dict, List, Optional, Callable
 from abc import abstractmethod
 import asyncio
@@ -8,6 +9,8 @@ from .context import RpcCallContext
 from .logging import RpcLogger
 from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc.timed_promise import TimedPromise
+
+logger = logging.getLogger(__name__)
 
 
 class RpcCore(RpcClient):
@@ -32,7 +35,7 @@ class RpcCore(RpcClient):
         async def on_data(data: List[Any]) -> None:
             try:
                 if not isinstance(data, list) or len(data) < 2:
-                    print(f"RpcCore: Invalid message format: {data}", file=sys.stderr)
+                    logger.warning(f"RpcCore: Invalid message format: {data}")
                     return
 
                 protocol_id = data[0]
@@ -43,17 +46,17 @@ class RpcCore(RpcClient):
                 elif protocol_id == 3:
                     await self.handle_proto_3(data)
                 else:
-                    print(f"RpcCore: Unsupported protocol: {data}", file=sys.stderr)
+                    logger.warning(f"RpcCore: Unsupported protocol: {data}")
 
             except Exception as e:
-                print(f"Error processing RPC message: {e}", file=sys.stderr)
+                logger.error(f"Error processing RPC message: {e}")
 
         self.pipe.on("data", on_data)
 
     async def handle_proto_1(self, data: List[Any]) -> None:
         """Handle Protocol 1 (RPC) messages."""
         if len(data) < 3:
-            print(f"RpcCore [Proto 1]: Invalid format: {data}", file=sys.stderr)
+            logger.warning(f"RpcCore [Proto 1]: Invalid format: {data}")
             return
 
         sub_proto_id = data[1]
@@ -61,7 +64,7 @@ class RpcCore(RpcClient):
         # Responses: [1, 0, id, result] (Success) or [1, 1, id, error] (Error)
         if sub_proto_id <2:
             if len(data) < 4:
-                print(f"RpcCore [Proto 1]: Invalid response format: {data}", file=sys.stderr)
+                logger.warning(f"RpcCore [Proto 1]: Invalid response format: {data}")
                 return
 
             id_ = data[2]
@@ -74,15 +77,12 @@ class RpcCore(RpcClient):
                 else:  # Error
                     await promise.reject(payload)
             else:
-                print(
-                    f"Received rpc reply for expired request id: {id_}, success={sub_proto_id==0}, data={payload}",
-                    file=sys.stderr,
-                )
+                logger.warning(f"Received rpc reply for expired request id: {id_}, success={sub_proto_id==0}, data={payload}")
 
         # Method Call (2) or Fire (3): [1, 2/3, id, method, params]
         elif sub_proto_id == 2 or sub_proto_id == 3:
             if len(data) < 5:
-                print(f"RpcCore [Proto 1]: Invalid call format: {data}", file=sys.stderr)
+                logger.warning(f"RpcCore [Proto 1]: Invalid call format: {data}")
                 return
 
             id_ = data[2]
@@ -111,22 +111,16 @@ class RpcCore(RpcClient):
                         try:
                             await self._resolve_result(result)
                         except Exception as e:
-                            print(
-                                f"Fired method error: {method}, params={params}, error={e}",
-                                file=sys.stderr,
-                            )
+                            logger.error(f"Fired method error: {method}, params={params}, error={e}")
                     asyncio.create_task(handle_fire())
 
             except Exception as e:
                 if sub_proto_id == 2:
                     asyncio.create_task(self.pipe.write([1, 1, id_, str(e)]))
                 else:
-                    print(
-                        f"Fired method error: {method}, params={params}, error={e}",
-                        file=sys.stderr,
-                    )
+                    logger.error(f"Fired method error: {method}, params={params}, error={e}")
         else:
-            print(f"RpcCore [Proto 1]: Unknown sub-protocol: {sub_proto_id}", file=sys.stderr)
+            logger.warning(f"RpcCore [Proto 1]: Unknown sub-protocol: {sub_proto_id}")
 
 
     async def handle_proto_2(self, data: List[Any]) -> None:
@@ -137,7 +131,7 @@ class RpcCore(RpcClient):
             return
 
         if len(data) < 5:
-            print(f"RpcCore [Proto 2]: Invalid format: {data}", file=sys.stderr)
+            logger.warning(f"RpcCore [Proto 2]: Invalid format: {data}")
             return
 
         log_level = data[1]
@@ -149,10 +143,10 @@ class RpcCore(RpcClient):
         level_map = {1: "CRITICAL", 2: "WARN", 3: "INFO", 4: "VERBOSE", 5: "DEBUG"}
         level_str = level_map.get(log_level, f"LEVEL-{log_level}")
 
-        print(f"[RemoteLog:{level_str}] p{ref_proto}:{ref_id} {content}", file=sys.stderr)
+        logger.info(f"[RemoteLog:{level_str}] p{ref_proto}:{ref_id} {content}")
 
     async def handle_proto_3(self, data: List[Any]) -> None:
-        print(f"RpcCore [Proto 3]: Unsupported event message: {data}", file=sys.stderr)
+        logger.warning(f"RpcCore [Proto 3]: Unsupported event message: {data}")
 
 
     async def call_method(self, method: str, *args: Any) -> Any:
@@ -237,11 +231,11 @@ class RpcV1(RpcCore):
 
     async def handle_proto_3(self, data: List[Any]) -> None:
         if len(data) < 4:
-            print(f"RpcV1 [Proto 3]: Invalid event format: {data}", file=sys.stderr)
+            logger.warning(f"RpcV1 [Proto 3]: Invalid event format: {data}")
             return
         sub_proto_id = data[1]
         if sub_proto_id != 0:
-            print(f"RpcV1 [Proto 3]: Unknown sub-protocol: {sub_proto_id}", file=sys.stderr)
+            logger.warning(f"RpcV1 [Proto 3]: Unknown sub-protocol: {sub_proto_id}")
             return
         await self._on_event(data[2], data[3])
 

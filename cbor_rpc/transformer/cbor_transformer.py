@@ -66,6 +66,8 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
             stream = BytesIO(self._buffer)
             decoder = cbor2.CBORDecoder(stream)
             decoded_data = decoder.decode()
+            if decoded_data is cbor2.break_marker:
+                raise cbor2.CBORDecodeError("Unexpected break marker")
 
             bytes_consumed = stream.tell()
             self._buffer = self._buffer[bytes_consumed:]

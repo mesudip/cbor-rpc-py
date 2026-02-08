@@ -67,11 +67,10 @@ class StdioPipe(AioPipe[bytes, bytes]):
             raise RuntimeError("No subprocess associated with this StdioPipe instance.")
         return await self._process.wait()
 
-    def terminate(self):
+    async def terminate(self, *args: Any):
         """
         Terminates the started subprocess if one exists.
-        Raises RuntimeError if no process was started by this pipe.
         """
-        if not self._process:
-            raise RuntimeError("No subprocess associated with this StdioPipe instance.")
-        self._process.terminate()
+        if self._process and self._process.returncode is None:
+            self._process.terminate()
+        await super().terminate(*args)

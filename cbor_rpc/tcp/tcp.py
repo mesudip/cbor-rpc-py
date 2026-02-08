@@ -261,11 +261,3 @@ class TcpServer(Server[TcpPipe]):
         if self._server and self._server.sockets:
             return self._server.sockets[0].getsockname()[:2]
         return ("", 0)
-
-    @abstractmethod
-    async def accept(self, pipe: TcpPipe) -> bool:
-        pass
-
-    async def close(self) -> None:
-        """Legacy method - use stop() instead."""
-        await self.stop()

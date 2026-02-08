@@ -1,7 +1,7 @@
-import pytest
 import asyncio
-from typing import Any, Generic, List
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any, List
+
+import pytest
 
 from cbor_rpc import EventPipe, RpcV1, TimedPromise
 from cbor_rpc.rpc.context import RpcCallContext
@@ -25,18 +25,16 @@ def throw_error_method(message: str) -> None:
     raise Exception(message)
 
 
-# Method handler for RPC
 def method_handler(context: RpcCallContext, method: str, args: List[Any]) -> Any:
     if method == "sleep":
         return sleep_method(*args)
-    elif method == "add":
+    if method == "add":
         return add_method(*args)
-    elif method == "multiply":
+    if method == "multiply":
         return multiply_method(*args)
-    elif method == "throwError":
+    if method == "throwError":
         return throw_error_method(*args)
     raise Exception(f"Unknown method: {method}")
-
 
 
 class EventRpcHelper(RpcV1):
@@ -97,9 +95,9 @@ async def test_throw_error_method(rpc):
 
 @pytest.mark.asyncio
 async def test_call_method_timeout(rpc, pipe):
-    rpc.set_timeout(100)  # Set short timeout
+    rpc.set_timeout(100)
     with pytest.raises(Exception) as exc_info:
-        await rpc.call_method("sleep", 1)  # Long sleep to trigger timeout
+        await rpc.call_method("sleep", 1)
     assert exc_info.value.args[0]["timeout"] is True
     assert exc_info.value.args[0]["timeoutPeriod"] == 100
 
@@ -114,7 +112,7 @@ async def test_call_method_unknown_method(rpc):
 @pytest.mark.asyncio
 async def test_fire_method(rpc):
     await rpc.fire_method("add", 1, 2)
-    assert rpc._counter == 1  # Verify message was sent
+    assert rpc._counter == 1
 
 
 @pytest.mark.asyncio
@@ -152,16 +150,14 @@ async def test_wait_next_event_already_waiting(event_rpc):
 
 @pytest.mark.asyncio
 async def test_invalid_message_format(rpc, pipe):
-    await pipe.write([1])  # Invalid message
-    await asyncio.sleep(0.1)  # Allow processing
-    # No crash means test passes
+    await pipe.write([1])
+    await asyncio.sleep(0.1)
 
 
 @pytest.mark.asyncio
 async def test_unsupported_protocol(rpc, pipe):
-    await pipe.write([99, 0, 0, "add", [1, 2]])  # Unsupported protocol
-    await asyncio.sleep(0.1)  # Allow processing
-    # No crash means test passes
+    await pipe.write([99, 0, 0, "add", [1, 2]])
+    await asyncio.sleep(0.1)
 
 
 @pytest.mark.asyncio
@@ -175,7 +171,6 @@ async def test_concurrent_method_calls(rpc):
 async def test_read_only_client(pipe):
     read_only = RpcV1.read_only_client(SimplePipe())
 
-    # We need to directly call the handle_method_call method to test it
     with pytest.raises(Exception) as exc_info:
         context = RpcCallContext(read_only.logger)
         read_only.handle_method_call(context, "add", [1, 2])

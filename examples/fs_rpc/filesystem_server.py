@@ -79,14 +79,20 @@ if __name__ == "__main__":
     from cbor_rpc.tcp import TcpPipe, TcpServer
     from cbor_rpc.transformer.json_transformer import JsonTransformer
 
+    class SimpleTcpServer(TcpServer):
+        async def accept(self, pipe: TcpPipe) -> bool:
+            return True
+
     async def main():
         rpc_id = 1
         # Create a TCP server that handles connections, using JsonTransformer for RPC messages
-        tcp_server = await TcpServer.create("localhost", 8000)
+        tcp_server = await SimpleTcpServer.create("localhost", 8000)
         print("Server running on port 8000")
 
         # Set up event handlers for new connections
-        async def handle_connection(rpc_pipe):
+        async def handle_connection(pipe):
+            json_transformer = JsonTransformer()
+            rpc_pipe = json_transformer.apply_transformer(pipe)
             server = FilesystemRpcServer()
             await server.add_connection(str(rpc_id), rpc_pipe)
 

@@ -1,11 +1,13 @@
+import asyncio
+
+import cbor2
 import pytest
 import pytest_asyncio
-import asyncio
-import cbor2
-from cbor_rpc.transformer.cbor_transformer import CborTransformer, CborStreamTransformer
+
 from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
 from cbor_rpc.transformer.base.event_transformer_pipe import EventTransformerPipe
+from cbor_rpc.transformer.cbor_transformer import CborTransformer, CborStreamTransformer
 from tests.helpers.timeout_queue import TimeoutQueue
 
 
@@ -32,12 +34,11 @@ def server_raw(_raw_pipe_pair):
 @pytest.fixture
 def client_cbor(client_raw):
     cbor_transformer = CborTransformer()
-    return cbor_transformer.applyTransformer(client_raw)
+    return cbor_transformer.apply_transformer(client_raw)
 
 
 @pytest.mark.asyncio
 class TestCborTransformer:
-
     async def test_cbor_transformer_end_to_end_simple_dict(self, client_raw, server_raw, client_cbor):
         client_transformed_pipe = client_cbor
 
@@ -48,7 +49,6 @@ class TestCborTransformer:
         await client_transformed_pipe.write(original_data)
         encoded_data_received_by_server = await received_data_queue.get()
 
-        # Verify the raw bytes received by the server are valid CBOR
         decoded_by_server = cbor2.loads(encoded_data_received_by_server)
         assert decoded_by_server == original_data
 
@@ -66,18 +66,15 @@ class TestCborTransformer:
         error_queue = TimeoutQueue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
-        # Simulate server sending incomplete CBOR bytes
-        incomplete_cbor_bytes = b"\x83\x01\x02"  # Incomplete array, missing one element
+        incomplete_cbor_bytes = b"\x83\x01\x02"
         with pytest.raises(cbor2.CBORDecodeError):
             await server_raw.write(incomplete_cbor_bytes)
 
-        # The CborTransformer should now raise CBORDecodeError for incomplete data
         error = await asyncio.wait_for(error_queue.get(), timeout=1)
         assert isinstance(error, cbor2.CBORDecodeError)
         assert "Incomplete CBOR data for non-stream transformer" in str(error)
 
-        # Send truly invalid data
-        truly_invalid_cbor = b"\x1f"  # Unknown unsigned integer subtype
+        truly_invalid_cbor = b"\x1f"
         with pytest.raises(cbor2.CBORDecodeError):
             await server_raw.write(truly_invalid_cbor)
         error = await asyncio.wait_for(error_queue.get(), timeout=1)
@@ -90,7 +87,6 @@ class TestCborTransformer:
         error_queue = TimeoutQueue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
-        # Simulate server sending non-bytes data
         non_bytes_data = "not cbor"
         with pytest.raises(TypeError):
             await server_raw.write(non_bytes_data)
@@ -162,10 +158,9 @@ class TestCborTransformer:
 
 @pytest.mark.asyncio
 class TestCborStreamTransformer:
-
     async def test_cbor_stream_transformer_single_object(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         received_data_queue = TimeoutQueue()
         client_transformed_pipe.on("data", received_data_queue.put_nowait)
@@ -178,7 +173,7 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_concatenated_objects(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         received_data_queue = TimeoutQueue()
         client_transformed_pipe.on("data", received_data_queue.put_nowait)
@@ -189,14 +184,11 @@ class TestCborStreamTransformer:
 
         concatenated_cbor = cbor2.dumps(obj1) + cbor2.dumps(obj2) + cbor2.dumps(obj3)
 
-        # Send all concatenated data at once
         await server_raw.write(concatenated_cbor)
 
-        # Trigger additional decode passes to drain buffered objects
         await server_raw.write(b"")
         await server_raw.write(b"")
 
-        # Expect to receive objects one by one
         decoded1 = await received_data_queue.get()
         decoded2 = await received_data_queue.get()
         decoded3 = await received_data_queue.get()
@@ -207,7 +199,7 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_fragmented_objects(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         received_data_queue = TimeoutQueue()
         client_transformed_pipe.on("data", received_data_queue.put_nowait)
@@ -217,9 +209,7 @@ class TestCborStreamTransformer:
         obj = {"long_message": "a" * 100}
         cbor_bytes = cbor2.dumps(obj)
 
-        # Send in fragments
         await server_raw.write(cbor_bytes[:10])
-        # Should raise NeedsMoreDataException internally, but not emit an error
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(received_data_queue.get(), timeout=0.1)
         assert error_queue.empty()
@@ -236,7 +226,7 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_mixed_fragmented_and_concatenated(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         received_data_queue = TimeoutQueue()
         client_transformed_pipe.on("data", received_data_queue.put_nowait)
@@ -249,16 +239,13 @@ class TestCborStreamTransformer:
         cbor_bytes2 = cbor2.dumps(obj2)
         cbor_bytes3 = cbor2.dumps(obj3)
 
-        # Send first object fragmented
         await server_raw.write(cbor_bytes1[:5])
         await server_raw.write(cbor_bytes1[5:])
         decoded1 = await received_data_queue.get()
         assert decoded1 == obj1
 
-        # Send second and third concatenated
         await server_raw.write(cbor_bytes2 + cbor_bytes3)
 
-        # Trigger an extra decode pass to drain buffered third object
         await server_raw.write(b"")
 
         decoded2 = await received_data_queue.get()
@@ -268,7 +255,7 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_invalid_data_in_stream(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         received_data_queue = TimeoutQueue()
         client_transformed_pipe.on("data", received_data_queue.put_nowait)
@@ -276,17 +263,15 @@ class TestCborStreamTransformer:
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
         obj1 = {"valid": True}
-        invalid_bytes = b"\x1f"  # Unknown unsigned integer subtype
+        invalid_bytes = b"\x1f"
         obj2 = {"another": "valid"}
 
         await server_raw.write(cbor2.dumps(obj1))
         await server_raw.write(invalid_bytes + cbor2.dumps(obj2))
 
-        # First valid object should be decoded
         decoded1 = await received_data_queue.get()
         assert decoded1 == obj1
 
-        # The transformer should recover and decode the next valid object without emitting an error
         decoded2 = await received_data_queue.get()
         assert decoded2 == obj2
 
@@ -295,12 +280,11 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_non_bytes_data(self, client_raw, server_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         error_queue = TimeoutQueue()
         client_transformed_pipe.on("error", error_queue.put_nowait)
 
-        # Simulate server sending non-bytes data
         non_bytes_data = "not cbor"
         with pytest.raises(TypeError):
             await server_raw.write(non_bytes_data)
@@ -311,7 +295,7 @@ class TestCborStreamTransformer:
 
     async def test_cbor_stream_transformer_close_propagation_and_write_after_close(self, client_raw):
         cbor_stream_transformer = CborStreamTransformer()
-        client_transformed_pipe = cbor_stream_transformer.applyTransformer(client_raw)
+        client_transformed_pipe = cbor_stream_transformer.apply_transformer(client_raw)
 
         close_queue = TimeoutQueue()
         client_transformed_pipe.on("close", lambda *args: close_queue.put_nowait(True))
@@ -322,3 +306,32 @@ class TestCborStreamTransformer:
 
         result = await client_transformed_pipe.write({"after": "close"})
         assert result is False
+
+
+@pytest.mark.asyncio
+async def test_cbor_stream_transformer_paths(monkeypatch):
+    transformer = CborStreamTransformer()
+
+    with pytest.raises(NeedsMoreDataException):
+        await transformer.decode(None)
+
+    with pytest.raises(TypeError):
+        await transformer.decode("bad")
+
+    good = cbor2.dumps({"a": 1})
+    recovered = await transformer.decode(b"\xff" + good)
+    assert recovered == {"a": 1}
+
+    with pytest.raises(cbor2.CBORDecodeError):
+        await transformer.decode(b"\xff")
+
+    class BadDecoder:
+        def __init__(self, _stream):
+            pass
+
+        def decode(self):
+            raise ValueError("boom")
+
+    monkeypatch.setattr(cbor2, "CBORDecoder", BadDecoder)
+    with pytest.raises(ValueError):
+        await transformer.decode(good)

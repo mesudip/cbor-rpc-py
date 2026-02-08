@@ -1,5 +1,6 @@
 from typing import Any, Awaitable, Optional, TypeVar, Callable
 from typing import TYPE_CHECKING
+import asyncio
 import time
 
 from .base_exception import NeedsMoreDataException
@@ -19,14 +20,19 @@ class TransformerPipe(Pipe[T1, T2]):
     def __init__(self, pipe: Pipe[Any, Any], transformer: "Optional[Transformer[T1, T2]]"):
         super().__init__()
         self.pipe = pipe
+        self._closed = False
+        self._terminated = False
+
+        if transformer is None:
+            raise ValueError("A transformer must be provided")
 
         self.encode = transformer.encode
         self.decode = transformer.decode
 
-        def _handle_error(*args):
+        async def _handle_error(*args):
             if not self._closed:
                 self._closed = True
-                self.pipe.terminate()
+            await self.terminate()
             self._emit("error", *args)
 
         def _handle_close(*args):
@@ -42,7 +48,7 @@ class TransformerPipe(Pipe[T1, T2]):
             return False
         try:
             encoded = await self.encode(chunk)
-            return self.pipe.write(encoded)
+            return await self.pipe.write(encoded)
         except Exception as e:
             self._emit("error", e)
             return False
@@ -56,7 +62,7 @@ class TransformerPipe(Pipe[T1, T2]):
 
         try:
             while True:
-                raw = self.pipe.read(remaining)
+                raw = await self.pipe.read(remaining)
                 if raw is None:
                     return None
 
@@ -72,11 +78,12 @@ class TransformerPipe(Pipe[T1, T2]):
             self._emit("error", e)
             return None
 
-    def terminate(self) -> None:
-        if self._closed:
+    async def terminate(self) -> None:
+        if self._terminated:
             return
+        self._terminated = True
         self._closed = True
-        self.pipe.terminate()
+        await self.pipe.terminate()
 
     def _propagate_error(self, *args):
         self.pipe._emit("error", *args)
