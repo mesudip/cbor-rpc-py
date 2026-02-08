@@ -2,6 +2,7 @@ import os
 from typing import List, Optional, Any
 from cbor_rpc.rpc.context import RpcCallContext
 from cbor_rpc import RpcV1Server
+from cbor_rpc.transformer.json_transformer import JsonStreamTransformer, JsonTransformer
 
 
 class FilesystemRpcServer(RpcV1Server):
@@ -15,6 +16,7 @@ class FilesystemRpcServer(RpcV1Server):
         method: str,
         args: List[Any],
     ) -> Any:
+        context.logger.log(f"Received method call: {method} with args: {args}")
         if method == "list_files":
             return self.list_files(*args)
         elif method == "read_file":
@@ -76,27 +78,27 @@ class FilesystemRpcServer(RpcV1Server):
 
 if __name__ == "__main__":
     import asyncio
+    import logging
     from cbor_rpc.tcp import TcpPipe, TcpServer
-    from cbor_rpc.transformer.json_transformer import JsonTransformer
+    from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
 
     class SimpleTcpServer(TcpServer):
         async def accept(self, pipe: TcpPipe) -> bool:
+            print("Accepted from client",pipe.get_peer_info())
+            pipe.on("data", lambda data: print("Received from Client:", data))
+            pipe.on("error", lambda error: logging.exception("TCP pipe error", exc_info=error))
+            rpc_pipe = JsonStreamTransformer().apply_transformer(pipe)
+            rpc_pipe.on("error", lambda error: logging.exception("RPC pipe error", exc_info=error))
+            server = FilesystemRpcServer()
+            await server.add_connection(str(1), rpc_pipe)
             return True
 
     async def main():
+        logging.basicConfig(level=logging.DEBUG)
         rpc_id = 1
-        # Create a TCP server that handles connections, using JsonTransformer for RPC messages
+        # Create a TCP server that handles connections, using CBOR stream transformer for RPC messages
         tcp_server = await SimpleTcpServer.create("localhost", 8000)
         print("Server running on port 8000")
-
-        # Set up event handlers for new connections
-        async def handle_connection(pipe):
-            json_transformer = JsonTransformer()
-            rpc_pipe = json_transformer.apply_transformer(pipe)
-            server = FilesystemRpcServer()
-            await server.add_connection(str(rpc_id), rpc_pipe)
-
-        tcp_server.on_connection(handle_connection)
 
         # Just run until manually stopped
         try:

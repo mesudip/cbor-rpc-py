@@ -1,22 +1,26 @@
 import asyncio
 from cbor_rpc import RpcV1
 from cbor_rpc.tcp import TcpPipe
-from cbor_rpc.transformer.json_transformer import JsonTransformer
+from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
 from cbor_rpc.pipe.event_pipe import (
     EventPipe,
-)  # Keep this import for clarity, though not directly instantiated
+)
+from cbor_rpc.transformer.json_transformer import JsonStreamTransformer, JsonTransformer  # Keep this import for clarity, though not directly instantiated
 
 
 async def main():
     # Connect to the RPC server
     tcp_pipe = await TcpPipe.create_connection("localhost", 8000)  # Use port 8002
-
-    # Create a JSON transformer and attach the TCP pipe to it
-    json_transformer = JsonTransformer(tcp_pipe)
+    tcp_pipe.on("data", lambda data: print("Raw data received:", data))
+    # Use a stream-safe CBOR transformer so TCP framing is handled correctly
+    cbor_pipe = JsonStreamTransformer(max_buffer_bytes=1024*1024*50).apply_transformer(tcp_pipe)
+    cbor_pipe.on("data",lambda data: print("Decoded data:", data))
 
     # The RpcV1 client needs a pipe that it can write to and read from.
-    # The json_transformer now handles both incoming and outgoing data.
-    rpc_client = RpcV1.read_only_client(json_transformer)
+    # The CBOR transformer handles both incoming and outgoing data.
+    rpc_client = RpcV1.read_only_client(cbor_pipe)
+    # await rpc_client.set_log_level(5)
+    rpc_client.set_timeout(5000)  # Set a timeout of 1000 ms for RPC calls
 
     # Example usage of filesystem RPC methods
 
