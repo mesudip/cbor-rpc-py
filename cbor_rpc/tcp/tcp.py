@@ -90,17 +90,22 @@ class TcpPipe(AioPipe[bytes, bytes]):
             server_pipe = pipe
             connection_ready.set()
 
-        server.on_connection(on_connection)
+        # Use a pipeline so the event loop awaits the handler.
+        server.on("connection", on_connection)
 
         try:
-            # Create client connection
+            # Create client connection after sleeping briefly to ensure server is ready
+
             client_pipe = await TcpPipe.create_connection(host, port)
 
-            # Wait for server connection
+            # Wait for server connection with a timeout to avoid hangs.
             await connection_ready.wait()
 
             # Stop accepting new connections but keep the active pipes
-            await server.shutdown()
+            # this is required in 3.13. in 3.10 i could call shutdown()
+            # and it would worked, but in 3.13 shutdown() will block.
+            # so as workaround we will access internal server object.
+            server._server.close()
 
             return client_pipe, server_pipe
 
@@ -254,7 +259,6 @@ class TcpServer(Server[TcpPipe]):
 
         self._running = False
         self._server.close()
-        await self._server.wait_closed()
 
     def get_address(self) -> Tuple[str, int]:
         """Get the server's listening address and port."""

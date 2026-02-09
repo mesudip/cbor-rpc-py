@@ -5,7 +5,10 @@ from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
 from cbor_rpc.pipe.event_pipe import (
     EventPipe,
 )
-from cbor_rpc.transformer.json_transformer import JsonStreamTransformer, JsonTransformer  # Keep this import for clarity, though not directly instantiated
+from cbor_rpc.transformer.json_transformer import (
+    JsonStreamTransformer,
+    JsonTransformer,
+)  # Keep this import for clarity, though not directly instantiated
 
 
 async def main():
@@ -13,8 +16,8 @@ async def main():
     tcp_pipe = await TcpPipe.create_connection("localhost", 8000)  # Use port 8002
     tcp_pipe.on("data", lambda data: print("Raw data received:", data))
     # Use a stream-safe CBOR transformer so TCP framing is handled correctly
-    cbor_pipe = JsonStreamTransformer(max_buffer_bytes=1024*1024*50).apply_transformer(tcp_pipe)
-    cbor_pipe.on("data",lambda data: print("Decoded data:", data))
+    cbor_pipe = JsonStreamTransformer(max_buffer_bytes=1024 * 1024 * 50).apply_transformer(tcp_pipe)
+    cbor_pipe.on("data", lambda data: print("Decoded data:", data))
 
     # The RpcV1 client needs a pipe that it can write to and read from.
     # The CBOR transformer handles both incoming and outgoing data.

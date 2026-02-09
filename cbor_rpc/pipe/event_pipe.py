@@ -45,6 +45,7 @@ class EventPipe(AbstractEmitter, Generic[T1, T2]):
             async def write(self, chunk: Any) -> bool:
                 if self._closed or not self.connected_pipe or self.connected_pipe._closed:
                     return False
+
                 async def _deliver() -> None:
                     try:
                         await self.connected_pipe._notify("data", chunk)

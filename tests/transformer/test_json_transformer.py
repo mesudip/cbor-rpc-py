@@ -216,8 +216,8 @@ class TestJsonTransformerPipeInteraction:
 
 def test_json_transformer_decode_variants():
     transformer = JsonTransformer()
-    assert transformer.decode(b"{\"x\": 1}") == {"x": 1}
-    assert transformer.decode("{\"y\": 2}") == {"y": 2}
+    assert transformer.decode(b'{"x": 1}') == {"x": 1}
+    assert transformer.decode('{"y": 2}') == {"y": 2}
 
     with pytest.raises(TypeError):
         transformer.decode(123)

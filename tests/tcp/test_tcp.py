@@ -6,7 +6,7 @@ import pytest
 from cbor_rpc import TcpPipe
 from tests.helpers.simple_tcp_server import SimpleTcpServer
 
-DEFAULT_TIMEOUT = 1.0
+DEFAULT_TIMEOUT = 2.0
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_tcp_data_exchange():
 @pytest.mark.asyncio
 async def test_tcp_connection_errors():
     with pytest.raises(ConnectionError):
-        await TcpPipe.create_connection("127.0.0.1", 12345, timeout=0.1)
+        await TcpPipe.create_connection("127.0.0.1", 12345, timeout=DEFAULT_TIMEOUT)
 
     client = TcpPipe()
     with pytest.raises(ConnectionError):

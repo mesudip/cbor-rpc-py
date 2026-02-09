@@ -6,7 +6,6 @@ import pytest
 from cbor_rpc import EventPipe, RpcV1
 from cbor_rpc.rpc.context import RpcCallContext
 
-
 LOG_LEVELS = [
     ("crit", 1),
     ("warn", 2),

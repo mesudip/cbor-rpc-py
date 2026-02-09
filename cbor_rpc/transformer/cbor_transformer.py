@@ -20,7 +20,6 @@ except ImportError:
     _py_break_marker = cbor2.break_marker
 
 
-
 def _is_eof_error(exc: Exception) -> bool:
     """Return True if *exc* signals incomplete CBOR data (C or Python backend)."""
     return isinstance(exc, (cbor2.CBORDecodeEOF, IndexError)) or type(exc).__name__ == "CBORDecodeEOF"
@@ -46,7 +45,7 @@ class CborTransformer(Transformer[Any, bytes]):
 class CborStreamTransformer(AsyncTransformer[Any, Any]):
     """Async stream transformer that decodes concatenated CBOR objects."""
 
-    def __init__(self, max_buffer_bytes: int = 1024 * 1024*50):
+    def __init__(self, max_buffer_bytes: int = 1024 * 1024 * 50):
         super().__init__()
         self._buffer = bytearray()
         self._max_buffer_bytes = max_buffer_bytes
@@ -91,5 +90,5 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
         if obj is cbor2.break_marker or obj is _py_break_marker:
             raise cbor2.CBORDecodeError("Unexpected break marker")
 
-        self._buffer = self._buffer[stream.tell():]
+        self._buffer = self._buffer[stream.tell() :]
         return obj

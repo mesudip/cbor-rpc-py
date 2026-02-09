@@ -37,7 +37,7 @@ __all__ = [
     "RpcV1Server",
     # Rpc high level
     "RpcCallContext",
-        "RpcLogger",  # TCP classes
+    "RpcLogger",  # TCP classes
     "TcpPipe",
     "TcpServer",
     # Transformers

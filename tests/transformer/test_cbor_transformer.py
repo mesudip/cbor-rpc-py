@@ -71,7 +71,7 @@ class TestCborTransformer:
         decoded_data_received_by_client = await client_received_data_queue.get()
         assert decoded_data_received_by_client == response_data
 
-    async def test_cbor_transformer_decoding_error_on_read(self, server_raw, client_cbor,client_raw):
+    async def test_cbor_transformer_decoding_error_on_read(self, server_raw, client_cbor, client_raw):
         client_transformed_pipe = client_cbor
 
         error_queue = TimeoutQueue()
@@ -384,4 +384,3 @@ async def test_cbor_stream_transformer_overflow():
 
     with pytest.raises(OverflowError):
         await transformer.decode(b"12345")
-

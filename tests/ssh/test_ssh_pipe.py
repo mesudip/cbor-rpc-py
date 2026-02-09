@@ -15,26 +15,13 @@ async def test_ssh_pipe_terminate_and_write_eof():
         def is_closing(self) -> bool:
             return self._closed
 
-        def close(self) -> None:
-            self._closed = True
-
         async def wait_closed(self) -> None:
             return None
 
-    class DummyClient:
-        def __init__(self):
-            self._closed = False
-
-        def is_closed(self) -> bool:
-            return self._closed
-
-        def close(self) -> None:
+        async def terminate(self) -> None:
             self._closed = True
 
-        async def wait_closed(self) -> None:
-            return None
-
-    pipe = SshPipe(reader, writer, DummyClient(), DummyChannel())
+    pipe = SshPipe(reader, writer, DummyChannel())
 
     await pipe.write_eof()
     await pipe.terminate()

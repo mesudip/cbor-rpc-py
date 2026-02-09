@@ -53,6 +53,8 @@ class AioPipe(EventPipe[T1, T2], ABC):
         Raises:
             RuntimeError: If reader or writer is not initialized.
         """
+        if self._connected and not self._closed:
+            return
         if not self._reader or not self._writer:
             raise RuntimeError("Reader or writer not initialized")
 
@@ -174,6 +176,17 @@ class AioPipe(EventPipe[T1, T2], ABC):
         except Exception as e:
             self._emit("error", e)  # Synchronoous _emit
             return False
+
+    async def write_eof(self) -> None:
+        """
+        Write EOF to the writer if supported.
+        """
+        if self._writer and self._writer.can_write_eof():
+            self._writer.write_eof()
+            try:
+                await self._writer.drain()
+            except Exception as e:
+                print(f"AioPipe: Failed to drain writer on EOF: {e}")
 
     async def terminate(self, *args: Any) -> None:
         """
