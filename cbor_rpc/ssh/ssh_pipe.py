@@ -18,6 +18,11 @@ class SshPipe(AioPipe[bytes, bytes]):
     ):
         super().__init__(reader, writer)
 
+        async def _forward_stdout(data: bytes) -> None:
+            await self._notify("stdout", data)
+
+        # Emit "stdout" events for data read from the channel
+        self.pipeline("data", _forward_stdout)
         self._stderr_task = asyncio.create_task(self._stderr_loop())
         self._ssh_channel = ssh_channel
 
@@ -35,6 +40,7 @@ class SshPipe(AioPipe[bytes, bytes]):
                         break
                     try:
                         await self._notify("data", data)
+                        await self._notify("stderr", data)
                     except Exception as e:
                         self._emit("error", e)  # Synchronous _emit
                         break
@@ -81,7 +87,6 @@ class SshPipe(AioPipe[bytes, bytes]):
             await self._ssh_channel.wait_closed()  # Ensure the AioPipe is fully closed
 
     async def wait_closed(self) -> None:
-        await self._ssh_channel.wait_closed()
         if self._ssh_channel:
             await self._ssh_channel.wait_closed()
 
@@ -115,13 +120,10 @@ class SshServer:
         **connect_kwargs,
     ) -> "SshServer":
 
-        keys = client_keys
+        keys = list(client_keys) if client_keys else []
         if ssh_key_content:
             key = asyncssh.import_private_key(ssh_key_content, passphrase=ssh_key_passphrase)
-            if keys:
-                keys.append(key)
-            else:
-                keys = [key]
+            keys.append(key)
 
         connection = await asyncssh.connect(
             host=host,
@@ -147,7 +149,13 @@ class SshServer:
         if not self._connection:
             raise RuntimeError("SshServer is not connected. Call connect() first.")
 
-        channel = await self._connection.create_process(command, term_type=None, encoding=None, stdin=asyncssh.PIPE)
+        channel = await self._connection.create_process(
+            command,
+            term_type=None,
+            encoding=None,
+            stdin=asyncssh.PIPE,
+            stderr=asyncssh.PIPE,
+        )
 
         reader = channel.stdout
         writer = channel.stdin

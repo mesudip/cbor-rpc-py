@@ -24,13 +24,12 @@ async def main():
 
     try:
         # Establish the pipe
-        server = SshServer(
+        server = await SshServer.connect(
             host=args.host,
             port=args.port,
             username=args.user,
             password=args.password,
         )
-        await server.connect()
         pipe = await server.run_command(args.remote_cmd)
     except Exception as e:
         print(f"Failed to connect: {e}")

@@ -185,8 +185,8 @@ class AioPipe(EventPipe[T1, T2], ABC):
             self._writer.write_eof()
             try:
                 await self._writer.drain()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"AioPipe: Failed to drain writer on EOF: {e}")
 
     async def terminate(self, *args: Any) -> None:
         """

@@ -26,7 +26,5 @@ async def test_ssh_pipe_terminate_and_write_eof():
     await pipe.write_eof()
     await pipe.terminate()
 
-
-
     server.close()
     await server.wait_closed()

@@ -16,15 +16,13 @@ async def main():
 
     print(f"Connecting to {args.user}@{args.host}:{args.port}...")
 
-    server = SshServer(
-        host=args.host,
-        port=args.port,
-        username=args.user,
-        password=args.password,
-    )
-
     try:
-        await server.connect()
+        server = await SshServer.connect(
+            host=args.host,
+            port=args.port,
+            username=args.user,
+            password=args.password,
+        )
     except Exception as e:
         print(f"Failed to connect: {e}")
         return

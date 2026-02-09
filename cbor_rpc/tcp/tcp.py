@@ -102,6 +102,9 @@ class TcpPipe(AioPipe[bytes, bytes]):
             await connection_ready.wait()
 
             # Stop accepting new connections but keep the active pipes
+            # this is required in 3.13. in 3.10 i could call shutdown()
+            # and it would worked, but in 3.13 shutdown() will block.
+            # so as workaround we will access internal server object.
             server._server.close()
 
             return client_pipe, server_pipe

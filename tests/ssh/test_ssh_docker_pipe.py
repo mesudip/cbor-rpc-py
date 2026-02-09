@@ -138,6 +138,69 @@ async def test_ssh_pipe_with_binary_data(ssh_server):
 
 
 @pytest.mark.asyncio
+async def test_ssh_pipe_emits_stdout_stderr_and_data(ssh_server):
+    print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} for stdout/stderr/data test...")
+    pipe = None
+    try:
+        command = "sh -c 'sleep 0.2; echo stdout-line; echo stderr-line 1>&2; sleep 0.2'"
+        pipe = await ssh_server.run_command(command=command)
+
+        stdout_event = asyncio.Event()
+        stderr_event = asyncio.Event()
+        data_event = asyncio.Event()
+
+        stdout_chunks = []
+        stderr_chunks = []
+        data_chunks = []
+        seen = {"stdout": False, "stderr": False}
+
+        def on_stdout(data):
+            stdout_chunks.append(data)
+            if b"stdout-line" in data:
+                stdout_event.set()
+
+        def on_stderr(data):
+            stderr_chunks.append(data)
+            if b"stderr-line" in data:
+                stderr_event.set()
+
+        def on_data(data):
+            data_chunks.append(data)
+            if b"stdout-line" in data:
+                seen["stdout"] = True
+            if b"stderr-line" in data:
+                seen["stderr"] = True
+            if seen["stdout"] and seen["stderr"]:
+                data_event.set()
+
+        pipe.pipeline("stdout", on_stdout)
+        pipe.pipeline("stderr", on_stderr)
+        pipe.pipeline("data", on_data)
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(stdout_event.wait(), stderr_event.wait(), data_event.wait()),
+                timeout=10,
+            )
+        except asyncio.TimeoutError:
+            pytest.fail("Did not receive stdout, stderr, and data events within 10 seconds.")
+
+        full_stdout = b"".join(stdout_chunks)
+        full_stderr = b"".join(stderr_chunks)
+        full_data = b"".join(data_chunks)
+
+        assert b"stdout-line" in full_stdout
+        assert b"stderr-line" in full_stderr
+        assert b"stdout-line" in full_data
+        assert b"stderr-line" in full_data
+
+    finally:
+        if pipe:
+            await pipe.terminate()
+            print("SshPipe closed.")
+
+
+@pytest.mark.asyncio
 async def test_ssh_pipe_multiplexing(ssh_server):
     print(f"\nAttempting SshPipe connection to {ssh_server.host}:{ssh_server.port} with multiplexing...")
 
