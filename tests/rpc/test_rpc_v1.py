@@ -41,7 +41,7 @@ class EventRpcHelper(RpcV1):
     def get_id(self) -> str:
         return "event_rpc"
 
-    def handle_method_call(self, method: str, args: List[Any]) -> Any:
+    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
         raise Exception("Event-only RPC")
 
     async def on_event(self, topic: str, payload: Any) -> None:

@@ -34,136 +34,141 @@ class RpcV1(RpcInitClient):
         self.logger = RpcLogger(self.pipe, lambda: 0, self._peer_log_level)
         # Lambda 0 is placeholder. Ideally context contextvars would be used to get current request ID.
 
-        async def resolve_result(result: Any) -> Any:
-            """Recursively resolve coroutines or nested coroutines."""
-            while asyncio.iscoroutine(result):
-                result = await result
-            return result
+        self.pipe.on("data", self._on_data)
 
-        async def on_data(data: List[Any]) -> None:
+    async def _resolve_result(self, result: Any) -> Any:
+        """Recursively resolve coroutines or nested coroutines."""
+        while asyncio.iscoroutine(result):
+            result = await result
+        return result
+
+    async def _handle_stream_message(self, data: List[Any]) -> None:
+        sub_protocol = data[1]
+        # Protocol 2: Streaming (Logs/Progress)
+        if len(data) != 5:
+            return
+        id_, method, params = data[2], data[3], data[4]
+        handle = self._active_calls.get(id_)
+        if handle:
+            if sub_protocol == 0:  # Log
+                handle._emit_log(method, params)
+            elif sub_protocol == 1:  # Progress
+                handle._emit_progress(method, params)
+
+    async def _handle_event_message(self, data: List[Any]) -> None:
+        # Protocol 3: Events [3, 0, Topic, Message]
+        if len(data) != 4:
+            return
+        topic, message = data[2], data[3]
+
+        # Resolve waiters
+        waiter = self._waiters.pop(topic, None)
+        if waiter:
+            await waiter.resolve(message)
+
+        # Call handler
+        asyncio.create_task(self.on_event(topic, message))
+
+    async def _handle_rpc_message(self, data: List[Any]) -> None:
+        sub_protocol = data[1]
+
+        if sub_protocol == 3:  # Cancel
+            if len(data) != 3:
+                return
+            id_ = data[2]
+            ctx = self._incoming_contexts.get(id_)
+            if ctx:
+                ctx.cancelled = True
+            return
+
+        if len(data) != 5:
+            logger.warning(f"Invalid message format for Proto 1: {data}")
+            return
+        id_, method, params = data[2], data[3], data[4]
+
+        if sub_protocol < 2:  # Method call (0) or fire (1)
+            token = current_request_id.set(id_)
             try:
-                if not isinstance(data, list) or len(data) < 3:
-                    logger.warning(f"Invalid message format: {data}")
-                    return
+                # Create context
+                def emit_progress(value: Any, meta: Any = None):
+                    # Progress Protocol: [2, 1, ID, Value, Metadata]
+                    asyncio.create_task(self.pipe.write([2, 1, id_, value, meta]))
 
-                protocol_id = data[0]
+                request_logger = RpcLogger(
+                    self.pipe,
+                    lambda: id_,
+                    self._peer_log_level,
+                )
 
-                sub_protocol = data[1]
+                context = RpcCallContext(id_, request_logger, emit_progress)
+                self.register_incoming_context(id_, context)
 
-                # Protocol 2: Streaming (Logs/Progress)
-                if protocol_id == 2:
-                    if len(data) != 5:
-                        return
-                    id_, method, params = data[2], data[3], data[4]
-                    handle = self._active_calls.get(id_)
-                    if handle:
-                        if sub_protocol == 0:  # Log
-                            handle._emit_log(method, params)
-                        elif sub_protocol == 1:  # Progress
-                            handle._emit_progress(method, params)
-                    return
+                # Call the method and get the result
+                result = self.handle_method_call(context, method, params)
 
-                # Protocol 3: Events [3, 0, Topic, Message]
-                if protocol_id == 3:
-                    if len(data) != 4:
-                        return
-                    topic, message = data[2], data[3]
-
-                    # Resolve waiters
-                    waiter = self._waiters.pop(topic, None)
-                    if waiter:
-                        await waiter.resolve(message)
-
-                    # Call handler
-                    asyncio.create_task(self.on_event(topic, message))
-                    return
-
-                if protocol_id == 1:
-                    if sub_protocol == 3:  # Cancel
-                        if len(data) != 3:
-                            return
-                        id_ = data[2]
-                        ctx = self._incoming_contexts.get(id_)
-                        if ctx:
-                            ctx.cancelled = True
-                        return
-
-                if len(data) != 5:
-                    logger.warning(f"Invalid message format for Proto 1: {data}")
-                    return
-                id_, method, params = data[2], data[3], data[4]
-
-                if protocol_id != 1:
-
-                    logger.warning(f"Unsupported protocol: {data}")
-                    return
-                # print("RpvV1: Received", data, file=sys.stderr)
-
-                if sub_protocol < 2:  # Method call (0) or fire (1)
-                    token = current_request_id.set(id_)
+                # Handle the response asynchronously
+                async def handle_response():
                     try:
-                        # Create context
-                        def emit_progress(value: Any, meta: Any = None):
-                            # Progress Protocol: [2, 1, ID, Value, Metadata]
-                            asyncio.create_task(self.pipe.write([2, 1, id_, value, meta]))
-
-                        request_logger = RpcLogger(
-                            self.pipe,
-                            lambda: id_,
-                            self._peer_log_level,
-                        )
-
-                        context = RpcCallContext(id_, request_logger, emit_progress)
-                        self.register_incoming_context(id_, context)
-
-                        # Call the method and get the result
-                        result = self.handle_method_call(context, method, params)
-
-                        # Handle the response asynchronously
-                        async def handle_response():
-                            try:
-                                resolved_result = await resolve_result(result)
-                                if sub_protocol == 0:  # Only respond to method calls, not fire calls
-                                    await self.pipe.write([1, 2, id_, True, resolved_result])
-                            except Exception as e:
-                                if sub_protocol == 0:
-                                    await self.pipe.write([1, 2, id_, False, str(e)])
-                                else:
-                                    logger.error(f"Fired method error: {method}, params={params}, error={e}")
-                            finally:
-                                self._incoming_contexts.pop(id_, None)
-
-                        # Create task to handle response
-                        asyncio.create_task(handle_response())
-
+                        resolved_result = await self._resolve_result(result)
+                        if sub_protocol == 0:  # Only respond to method calls, not fire calls
+                            await self.pipe.write([1, 2, id_, True, resolved_result])
                     except Exception as e:
-                        self._incoming_contexts.pop(id_, None)
                         if sub_protocol == 0:
-                            asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
+                            await self.pipe.write([1, 2, id_, False, str(e)])
                         else:
                             logger.error(f"Fired method error: {method}, params={params}, error={e}")
                     finally:
-                        current_request_id.reset(token)
+                        self._incoming_contexts.pop(id_, None)
 
-                elif sub_protocol == 2:  # Response
-                    handle = self._active_calls.pop(id_, None)
-                    if handle:
-                        promise = handle._promise
-                        if method is True:  # Success
-                            await promise.resolve(params)
-                        else:  # Error
-                            await promise.reject(params)
-                    else:
-                        # Fallback for old promises if any? No.
-                        logger.warning(
-                            f"Received rpc reply for expired request id: {id_}, success={method}, data={params}"
-                        )
-                else:
-                    logger.warning(f"RpcV1: Invalid direction: {sub_protocol}")
+                # Create task to handle response
+                asyncio.create_task(handle_response())
+
             except Exception as e:
-                logger.error(f"Error in on_data: {e}", exc_info=True)
+                self._incoming_contexts.pop(id_, None)
+                if sub_protocol == 0:
+                    asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
+                else:
+                    logger.error(f"Fired method error: {method}, params={params}, error={e}")
+            finally:
+                current_request_id.reset(token)
 
-        self.pipe.on("data", on_data)
+        elif sub_protocol == 2:  # Response
+            handle = self._active_calls.pop(id_, None)
+            if handle:
+                promise = handle._promise
+                if method is True:  # Success
+                    await promise.resolve(params)
+                else:  # Error
+                    await promise.reject(params)
+            else:
+                # Fallback for old promises if any? No.
+                logger.warning(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}")
+        else:
+            logger.warning(f"RpcV1: Invalid direction: {sub_protocol}")
+
+    async def _on_data(self, data: List[Any]) -> None:
+        try:
+            if not isinstance(data, list) or len(data) < 3:
+                logger.warning(f"Invalid message format: {data}")
+                return
+
+            protocol_id = data[0]
+
+            if protocol_id == 2:
+                await self._handle_stream_message(data)
+                return
+
+            if protocol_id == 3:
+                await self._handle_event_message(data)
+                return
+
+            if protocol_id == 1:
+                await self._handle_rpc_message(data)
+                return
+
+            logger.warning(f"Unsupported protocol: {data}")
+        except Exception as e:
+            logger.error(f"Error in on_data: {e}", exc_info=True)
 
     def create_call(self, method: str, *args: Any) -> RpcCallHandle:
         counter = self._counter

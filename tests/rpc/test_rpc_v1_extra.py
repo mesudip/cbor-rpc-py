@@ -35,7 +35,7 @@ class CoreOnlyRpc(RpcV1):
     async def on_event(self, topic: str, message: Any) -> None:
         pass
 
-    def handle_method_call(self, method: str, args: List[Any]) -> Any:
+    def handle_method_call(self, context, method: str, args: List[Any]) -> Any:
         if method == "boom":
             raise Exception("boom")
         if method == "nested":

@@ -4,6 +4,12 @@ from ..pipe.event_pipe import EventPipe
 
 
 class RpcInitClient(ABC):
+    """
+    Abstract base class for RPC clients.
+
+    Note: In previous versions, this class was named `RpcClient`.
+    """
+
     @abstractmethod
     async def call_method(self, method: str, *args: Any) -> Any:
         pass
@@ -18,6 +24,12 @@ class RpcInitClient(ABC):
 
 
 class RpcClient(RpcInitClient):
+    """
+    RPC Client with ID.
+
+    Note: In previous versions, this class was named `RpcAuthorizedClient`.
+    """
+
     @abstractmethod
     def get_id(self) -> str:
         pass

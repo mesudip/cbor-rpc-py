@@ -4,6 +4,9 @@ import os
 import sys
 from typing import AsyncIterator, Optional
 
+# Ensure cbor_rpc is in path
+sys.path.append("/app")
+
 import cbor2
 
 from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer

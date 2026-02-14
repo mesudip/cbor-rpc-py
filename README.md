@@ -20,7 +20,7 @@ A lightweight, event-based RPC framework for Python using CBOR (optionally JSON)
 The RPC system is built on top of `EventPipe` and `Transformers`.
 
 ### Capabilities
-- **Bidirectional**: Both sides can act as server and client.
+- **Bidirectional**: Both sides call rpc methods, both side can emit events.
 - **Logs & Progress**: Real-time streaming of log messages and progress updates during a rpc call.
 - **Events**: Broadcast and listen to topics.
 - **Async/Await**: Native support for Python's `asyncio`.
@@ -31,7 +31,7 @@ Extend `RpcV1Server` and implement `handle_method_call`.
 
 ```python
 import asyncio
-from cbor_rpc import RpcV1Server, TcpServer, CborStreamTransformer
+from cbor_rpc import RpcV1Server, TcpServer, CborStreamTransformer,RpcCallContext
 
 class MyService(RpcV1Server):
     def __init__(self, tcp_server: TcpServer):
@@ -47,7 +47,7 @@ class MyService(RpcV1Server):
         conn_id = str(tcp_pipe.get_peer_info())
         await self.add_connection(conn_id, rpc_pipe)
 
-    async def handle_method_call(self, connection_id, context, method, args):
+    async def handle_method_call(self, connection_id, context: RpcCallContext, method, args):
         if method == "add":
             return args[0] + args[1]
         raise Exception("Unknown method")
@@ -122,8 +122,8 @@ Most "real-world" pipes (TCP, SSH, Stdio) are `EventPipe`s. They are event-drive
 
 #### Consuming Data
 There are two ways to listen for data:
-2.  **`pipeline("data", handler)`**: Used for serial processing. Handlers are awaited in order. If a pipeline handler throws an error, it stops the chain and emits an `"error"`.
-1.  **`on("data", handler)`**: Simple pub/sub. The handler is called whenever data arrives. If it's a coroutine, it's run in the background.
+1.  **`pipeline("data", handler)`**: Used for serial processing. Handlers are awaited in order. If a pipeline handler throws an error, it stops the chain and emits an `"error"`.
+2.  **`on("data", handler)`**: Simple pub/sub. The handler is called whenever data arrives. If it's a coroutine, it's run in the background.
 
 ```python
 # Simple listener
