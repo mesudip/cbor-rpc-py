@@ -58,6 +58,7 @@ class RpcCallHandle:
         if self._promise is not None:
             return self
         self._promise = self._start_callback(self)
+        return self
 
     def on_log(self, callback: Callable[[int, Any], None]) -> "RpcCallHandle":
         """

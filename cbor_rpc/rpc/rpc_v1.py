@@ -102,8 +102,22 @@ class RpcV1(RpcInitClient):
                 if sub_protocol < 2:  # Method call (0) or fire (1)
                     token = current_request_id.set(id_)
                     try:
+                        # Create context
+                        def emit_progress(value: Any, meta: Any = None):
+                            # Progress Protocol: [2, 1, ID, Value, Metadata]
+                            asyncio.create_task(self.pipe.write([2, 1, id_, value, meta]))
+
+                        request_logger = RpcLogger(
+                            self.pipe,
+                            lambda: id_,
+                            self._peer_log_level,
+                        )
+
+                        context = RpcCallContext(id_, request_logger, emit_progress)
+                        self.register_incoming_context(id_, context)
+
                         # Call the method and get the result
-                        result = self.handle_method_call(method, params)
+                        result = self.handle_method_call(context, method, params)
 
                         # Handle the response asynchronously
                         async def handle_response():
@@ -217,7 +231,7 @@ class RpcV1(RpcInitClient):
         return await waiter.promise
 
     @abstractmethod
-    def handle_method_call(self, method: str, args: List[Any]) -> Any:
+    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
         pass
 
     @abstractmethod
@@ -235,24 +249,7 @@ class RpcV1(RpcInitClient):
             def get_id(self) -> str:
                 return id_
 
-            def handle_method_call(self, method: str, args: List[Any]) -> Any:
-                # Retrieve correct Request ID from context
-                req_id = current_request_id.get()
-
-                def emit_progress(value: Any, meta: Any = None):
-                    # Progress Protocol: [2, 1, ID, Value, Metadata]
-                    if req_id is not None:
-                        asyncio.create_task(self.pipe.write([2, 1, req_id, value, meta]))
-
-                request_logger = RpcLogger(
-                    self.pipe,
-                    lambda: req_id if req_id is not None else 0,
-                    self._peer_log_level,
-                )
-
-                context = RpcCallContext(req_id, request_logger, emit_progress)
-                if req_id is not None:
-                    self.register_incoming_context(req_id, context)
+            def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
                 return method_handler(context, method, args)
 
             async def on_event(self, topic: str, message: Any) -> None:

@@ -172,6 +172,6 @@ async def test_read_only_client(pipe):
     read_only = RpcV1.read_only_client(SimplePipe())
 
     with pytest.raises(Exception) as exc_info:
-        read_only.handle_method_call("add", [1, 2])
+        read_only.handle_method_call(None, "add", [1, 2])
 
     assert str(exc_info.value) == "Client Only Implementation"

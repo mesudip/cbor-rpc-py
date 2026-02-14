@@ -8,7 +8,7 @@ from .context import RpcCallContext
 from cbor_rpc.pipe.event_pipe import EventPipe
 
 
-class RpcV1Server(RpcServer):
+class RpcV1Server(RpcServer[str]):
     def __init__(self):
         self.active_connections: Dict[str, EventPipe[Any, Any]] = {}
         self.rpc_clients: Dict[str, RpcV1] = {}
