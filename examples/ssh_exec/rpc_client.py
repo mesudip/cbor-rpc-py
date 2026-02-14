@@ -2,7 +2,7 @@ import asyncio
 import argparse
 import sys
 from cbor_rpc.ssh.ssh_pipe import SshServer
-from cbor_rpc.rpc import RpcClient
+from cbor_rpc.rpc import RpcInitClient
 from cbor_rpc.transformer.json_transformer import JsonStreamTransformer
 
 
@@ -42,7 +42,7 @@ async def main():
     json_pipe = JsonStreamTransformer().apply_transformer(pipe)
 
     # Create RPC Client using the SSH pipe
-    client = RpcClient(json_pipe)
+    client = RpcInitClient(json_pipe)
 
     # -------------------------------------------------------------
     # Setup Remote Server Log Monitoring (Stderr)
@@ -72,7 +72,7 @@ async def main():
     # -------------------------------------------------------------
     # Setup Log Handling (RPC Protocol Logs)
     # The server uses context.logger.info/warn/etc to send logs.
-    # We can subscribe to these log events on the RpcClient.
+    # We can subscribe to these log events on the RpcInitClient.
     # -------------------------------------------------------------
     def on_log(level, content):
         prefix = "[RPC LOG]"

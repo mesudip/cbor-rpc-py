@@ -2,18 +2,18 @@ from typing import Any, Optional
 
 import pytest
 
-from cbor_rpc.rpc.rpc_base import RpcClient, RpcServer
+from cbor_rpc.rpc.rpc_base import RpcInitClient, RpcServer
 
 
-class DummyClient(RpcClient):
+class DummyClient(RpcInitClient):
     async def call_method(self, method: str, *args: Any) -> Any:
-        return await RpcClient.call_method(self, method, *args)
+        return await RpcInitClient.call_method(self, method, *args)
 
     async def fire_method(self, method: str, *args: Any) -> None:
-        return await RpcClient.fire_method(self, method, *args)
+        return await RpcInitClient.fire_method(self, method, *args)
 
     def set_timeout(self, milliseconds: int) -> None:
-        return RpcClient.set_timeout(self, milliseconds)
+        return RpcInitClient.set_timeout(self, milliseconds)
 
 
 class DummyServerBase(RpcServer):

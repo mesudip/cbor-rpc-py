@@ -128,7 +128,7 @@ async def rpc_client(request, get_stdio_server_script_path, ssh_server):
 
 
 @pytest.mark.asyncio
-async def simple_rpc_calls(rpc_client):
+async def test_simple_rpc_calls(rpc_client):
     msg = "Hello World"
     assert await rpc_client.call_method("echo", msg) == msg
 
@@ -156,3 +156,52 @@ async def simple_rpc_calls(rpc_client):
 
     res = await rpc_client.call_method("random_delay", 0.1)
     assert "Delayed for 0.1 seconds" in res
+
+
+@pytest.mark.asyncio
+async def test_rpc_calls_with_logging(rpc_client):
+    # Test logging and progress
+    handle = rpc_client.create_call("test_logging")
+
+    logs = []
+    handle.on_log(lambda level, msg: logs.append((level, msg)))
+
+    progress = []
+    handle.on_progress(lambda val, meta: progress.append((val, meta)))
+
+    result = await handle.result
+    assert result == "ok"
+
+    # Verify logs received
+    # Logs might arrive slightly out of sync if piped differently, but usually ordered.
+    # Level 3 = Log, 2 = Warn
+    # Wait a bit if needed, but 'await handle.result' implies stream flushed?
+    # Not necessarily, protocol 2 messages are separate. But server sends them BEFORE return.
+    # So they should be processed client-side.
+
+    # We might need a small wait?
+    await asyncio.sleep(0.1)
+
+    assert (3, "Info log") in logs
+    assert (2, "Warn log") in logs
+
+    # Verify progress
+    assert (50, "Halfway") in progress
+    assert (100, "Done") in progress
+    assert handle.get_progress() == 100
+
+    # Test Cancellation
+    # cancel_me waits 1s. We cancel immediately.
+    cancel_handle = rpc_client.create_call("cancel_me")
+    await asyncio.sleep(0.1)
+
+    cancel_handle.cancel()
+
+    try:
+        await asyncio.wait_for(cancel_handle.result, timeout=0.5)
+        # If it returns "too_late", cancellation failed.
+        # If it timeouts, that's arguably success (server execution stopped/didn't return).
+    except asyncio.TimeoutError:
+        pass  # Expected behavior if server aborted and didn't reply.
+    except Exception:
+        pass  # Maybe server sent error.

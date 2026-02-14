@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from ..pipe.event_pipe import EventPipe
 
 
-class RpcClient(ABC):
+class RpcInitClient(ABC):
     @abstractmethod
     async def call_method(self, method: str, *args: Any) -> Any:
         pass
@@ -17,7 +17,7 @@ class RpcClient(ABC):
         pass
 
 
-class RpcAuthorizedClient(RpcClient):
+class RpcClient(RpcInitClient):
     @abstractmethod
     def get_id(self) -> str:
         pass
@@ -37,7 +37,7 @@ class RpcServer(ABC):
         pass
 
     @abstractmethod
-    def get_client(self, connection_id: str) -> Optional[RpcAuthorizedClient]:
+    def get_client(self, connection_id: str) -> Optional[RpcClient]:
         pass
 
     @abstractmethod

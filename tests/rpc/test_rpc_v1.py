@@ -41,10 +41,10 @@ class EventRpcHelper(RpcV1):
     def get_id(self) -> str:
         return "event_rpc"
 
-    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
+    def handle_method_call(self, method: str, args: List[Any]) -> Any:
         raise Exception("Event-only RPC")
 
-    async def on_event(self, context: RpcCallContext, topic: str, payload: Any) -> None:
+    async def on_event(self, topic: str, payload: Any) -> None:
         pass
 
 
@@ -172,7 +172,6 @@ async def test_read_only_client(pipe):
     read_only = RpcV1.read_only_client(SimplePipe())
 
     with pytest.raises(Exception) as exc_info:
-        context = RpcCallContext(read_only.logger)
-        read_only.handle_method_call(context, "add", [1, 2])
+        read_only.handle_method_call("add", [1, 2])
 
     assert str(exc_info.value) == "Client Only Implementation"

@@ -28,7 +28,22 @@ class PerformanceServer(RpcV1Server):
 
     async def handle_method_call(self, connection_id, context, method, args):
         if method == "echo":
+            # Just return whatever is sent
             return args[0]
+        elif method == "test_logging":
+            context.logger.log("Info log")
+            await asyncio.sleep(0.01)
+            context.logger.warn("Warn log")
+            await asyncio.sleep(0.01)
+            # Emit progress via context
+            context.progress(50, "Halfway")
+            await asyncio.sleep(0.01)
+            context.progress(100, "Done")
+            await asyncio.sleep(0.01)  # Ensure progress is flushed before response
+            return "ok"
+        elif method == "cancel_me":
+            await asyncio.sleep(1)  # Wait for cancel
+            return "too_late"  # Should not be reached if cancelled
         elif method == "download_random":
             size = args[0]
             # Generate random bytes? Generating 10MB random might be slow in python if clear.

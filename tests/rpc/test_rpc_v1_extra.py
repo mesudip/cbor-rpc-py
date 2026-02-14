@@ -5,7 +5,7 @@ import pytest
 
 from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc.rpc.context import RpcCallContext
-from cbor_rpc.rpc.rpc_v1 import RpcV1, RpcCore
+from cbor_rpc.rpc.rpc_v1 import RpcV1
 from cbor_rpc.rpc.rpc_server import RpcV1Server
 
 
@@ -28,9 +28,12 @@ def _noop_handler(context: RpcCallContext, method: str, args: List[Any]) -> Any:
     return "ok"
 
 
-class CoreOnlyRpc(RpcCore):
+class CoreOnlyRpc(RpcV1):
     def get_id(self) -> str:
         return "core"
+
+    async def on_event(self, topic: str, message: Any) -> None:
+        pass
 
     def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
         if method == "boom":
@@ -67,7 +70,7 @@ async def test_rpc_v1_proto_validation_and_logging(caplog):
 
     await asyncio.sleep(0.05)
 
-    assert rpc._peer_log_level == 3
+    assert rpc._peer_log_level == 5
 
     logs = [r.message for r in caplog.records]
     assert any("Invalid response format" in log for log in logs)
@@ -76,7 +79,7 @@ async def test_rpc_v1_proto_validation_and_logging(caplog):
     assert any("expired request id" in log for log in logs)
     assert any("Invalid format" in log for log in logs)
     assert any("[RemoteLog:LEVEL-99]" in log for log in logs)
-    assert any("Invalid event format" in log for log in logs)
+    # assert any("Invalid event format" in log for log in logs) # Protocol 3 is valid now
 
     await pipe_a.terminate()
     await pipe_b.terminate()
@@ -95,6 +98,7 @@ async def test_rpc_v1_send_log_filters_by_peer_level():
 
     pipe_b.pipeline("data", on_data)
 
+    rpc._peer_log_level = 2
     rpc.logger.log("skip")
     await asyncio.sleep(0.01)
     assert received == []

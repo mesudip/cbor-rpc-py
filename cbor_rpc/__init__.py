@@ -19,8 +19,8 @@ from .transformer import (
     TransformerPipe,
 )
 from .rpc import (
+    RpcInitClient,
     RpcClient,
-    RpcAuthorizedClient,
     RpcServer,
     RpcV1,
     RpcV1Server,
@@ -41,8 +41,8 @@ __all__ = [
     # Server abstract classes
     "Server",
     # Rpc abstract classes
+    "RpcInitClient",
     "RpcClient",
-    "RpcAuthorizedClient",
     "RpcServer",
     # Rpc base implementation
     "RpcV1",

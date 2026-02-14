@@ -28,7 +28,7 @@ python simple_exec.py --host <HOST> --user <USER> --password <PASS> "python3 -c 
 
 ### 2. RPC over SSH (`rpc_client.py`)
 
-This script demonstrates how to run the CBOR-RPC protocol over an SSH tunnel. It starts a server process on the remote machine and interacts with it using `RpcClient`.
+This script demonstrates how to run the CBOR-RPC protocol over an SSH tunnel. It starts a server process on the remote machine and interacts with it using `RpcInitClient`.
 
 **Setup:**
 

@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 
 from cbor_rpc.rpc.server_base import Server
-from .rpc_base import RpcAuthorizedClient, RpcServer
+from .rpc_base import RpcClient, RpcServer
 from .rpc_v1 import RpcV1
 from .context import RpcCallContext
 from cbor_rpc.pipe.event_pipe import EventPipe
@@ -44,7 +44,7 @@ class RpcV1Server(RpcServer):
     def is_active(self, connection_id: str) -> bool:
         return connection_id in self.rpc_clients
 
-    def get_client(self, connection_id: str) -> Optional[RpcAuthorizedClient]:
+    def get_client(self, connection_id: str) -> Optional[RpcClient]:
         return self.rpc_clients.get(connection_id)
 
     async def call_method(self, connection_id: str, method: str, *args: Any) -> Any:
