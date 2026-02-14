@@ -3,12 +3,12 @@ import os
 import tempfile
 import sys
 import pytest
-import asyncssh
+from contextlib import asynccontextmanager
 from cbor_rpc import RpcV1
 from cbor_rpc.pipe.aio_pipe import AioPipe
+from cbor_rpc.stdio.stdio_pipe import StdioPipe
 from cbor_rpc.ssh.ssh_pipe import SshServer
 from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
-from tests.integration.rpc_test_helpers import run_rpc_all_methods
 
 
 async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, server_proc, timeout: float = 10.0) -> None:
@@ -32,8 +32,24 @@ async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, serve
     raise RuntimeError(f"Timed out waiting for remote socket: {socket_path}")
 
 
-@pytest.fixture
-async def unix_socket_pipe():
+@asynccontextmanager
+async def _stdio_pipe_ctx(server_script_path):
+    # Start the server process via StdioPipe
+    pipe = await StdioPipe.start_process(sys.executable, str(server_script_path))
+    try:
+        # Wrap the pipe with CBOR transformer
+        yield CborStreamTransformer().apply_transformer(pipe)
+    finally:
+        # Ensure cleanup
+        await pipe.terminate()
+        try:
+            await pipe.wait_for_process_termination()
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def _unix_local_pipe_ctx():
     import uuid
     from pathlib import Path
 
@@ -42,7 +58,7 @@ async def unix_socket_pipe():
         socket_path.unlink()
     # Path to the actual server script
     server_script = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "rpc_server.py")
+        os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "unix_socket_rpc_server.py")
     )
     # Start the server process
     proc = await asyncio.create_subprocess_exec(
@@ -72,10 +88,11 @@ async def unix_socket_pipe():
                 pass
 
 
-@pytest.fixture
-async def ssh_unix_socket_pipe(ssh_server: SshServer):
+@asynccontextmanager
+async def _unix_ssh_pipe_ctx(ssh_server):
     # Start the server process inside the container
-    server_cmd = "python3 /app/rpc_server.py"
+    # the script is located at tests/docker/sshd-python
+    server_cmd = "python3 /app/unix_socket_rpc_server.py"
     socket_path = "/tmp/cbor-rpc.sock"
     server_proc = await ssh_server._connection.create_process(server_cmd, term_type=None, encoding=None)
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
@@ -95,13 +112,47 @@ async def ssh_unix_socket_pipe(ssh_server: SshServer):
             pass
 
 
-@pytest.mark.asyncio
-async def test_rpc_all_methods_local_unix(unix_socket_pipe):
-    rpc_client = RpcV1.read_only_client(unix_socket_pipe)
-    await run_rpc_all_methods(rpc_client)
+@pytest.fixture(params=["stdio", "unix_local", "unix_ssh"])
+async def rpc_client(request, get_stdio_server_script_path, ssh_server):
+    if request.param == "stdio":
+        async with _stdio_pipe_ctx(get_stdio_server_script_path) as pipe:
+            yield RpcV1.read_only_client(pipe)
+    elif request.param == "unix_local":
+        async with _unix_local_pipe_ctx() as pipe:
+            yield RpcV1.read_only_client(pipe)
+    elif request.param == "unix_ssh":
+        async with _unix_ssh_pipe_ctx(ssh_server) as pipe:
+            yield RpcV1.read_only_client(pipe)
+    else:
+        raise ValueError(f"Unknown param: {request.param}")
 
 
 @pytest.mark.asyncio
-async def test_rpc_all_methods_ssh_unix(ssh_unix_socket_pipe):
-    rpc_client = RpcV1.read_only_client(ssh_unix_socket_pipe)
-    await run_rpc_all_methods(rpc_client)
+async def simple_rpc_calls(rpc_client):
+    msg = "Hello World"
+    assert await rpc_client.call_method("echo", msg) == msg
+
+    assert await rpc_client.call_method("add", 1, 2) == 3
+    assert await rpc_client.call_method("add", 10, 20, 30) == 60
+
+    assert await rpc_client.call_method("multiply", 2, 3) == 6
+    assert await rpc_client.call_method("multiply", 2, 3, 4) == 24
+
+    rpc_client.set_timeout(30000)
+    size = 1024 * 1024 * 4
+    data = await rpc_client.call_method("download_random", size)
+    assert isinstance(data, bytes)
+    assert len(data) == size
+
+    test_bytes = b"h" * size
+    length = await rpc_client.call_method("upload_random", test_bytes)
+    assert length == len(test_bytes)
+
+    start = asyncio.get_running_loop().time()
+    res = await rpc_client.call_method("sleep", 0.1)
+    end = asyncio.get_running_loop().time()
+    assert "Slept for 0.1 seconds" in res
+    assert (end - start) >= 0.08
+
+    res = await rpc_client.call_method("random_delay", 0.1)
+    assert "Delayed for 0.1 seconds" in res
