@@ -6,7 +6,8 @@ current_request_id: ContextVar[Any] = ContextVar("current_request_id", default=N
 
 
 class RpcCallContext:
-    def __init__(self, logger: RpcLogger, emit_progress: Callable[[Any, Any], None] = None):
+    def __init__(self, id_: int, logger: "RpcLogger", emit_progress: Callable[[Any, Any], None] = None):
+        self.id = id_
         self.logger = logger
         self._emit_progress = emit_progress or (lambda v, m: None)
         self.cancelled = False

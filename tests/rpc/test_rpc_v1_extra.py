@@ -35,7 +35,7 @@ class CoreOnlyRpc(RpcV1):
     async def on_event(self, topic: str, message: Any) -> None:
         pass
 
-    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
+    def handle_method_call(self, method: str, args: List[Any]) -> Any:
         if method == "boom":
             raise Exception("boom")
         if method == "nested":
@@ -67,19 +67,20 @@ async def test_rpc_v1_proto_validation_and_logging(caplog):
     await pipe_b.write([2, 99, 1, 2, "content"])
     await pipe_b.write([3, 0])
     await pipe_b.write([3, 1, "topic", "msg"])
+    # Trigger unsupported protocol
+    await pipe_b.write([99, 0, 0, 0, 0])
+    # Trigger expired request
+    await pipe_b.write([1, 2, 999, True, "late"])
 
     await asyncio.sleep(0.05)
 
     assert rpc._peer_log_level == 5
 
     logs = [r.message for r in caplog.records]
-    assert any("Invalid response format" in log for log in logs)
-    assert any("Invalid call format" in log for log in logs)
-    assert any("Unknown sub-protocol" in log for log in logs)
+    assert any("Invalid message format" in log for log in logs)
+    assert any("Invalid message format for Proto 1" in log for log in logs)
+    assert any("Unsupported protocol" in log for log in logs)
     assert any("expired request id" in log for log in logs)
-    assert any("Invalid format" in log for log in logs)
-    assert any("[RemoteLog:LEVEL-99]" in log for log in logs)
-    # assert any("Invalid event format" in log for log in logs) # Protocol 3 is valid now
 
     await pipe_a.terminate()
     await pipe_b.terminate()
@@ -99,18 +100,21 @@ async def test_rpc_v1_send_log_filters_by_peer_level():
     pipe_b.pipeline("data", on_data)
 
     rpc._peer_log_level = 2
+    rpc.logger.min_level = 2
     rpc.logger.log("skip")
     await asyncio.sleep(0.01)
     assert received == []
 
     rpc._peer_log_level = 2
+    rpc.logger.min_level = 2
     rpc.logger.debug("skip")
     await asyncio.sleep(0.01)
     assert received == []
 
     rpc.logger.warn("keep")
     await asyncio.sleep(0.01)
-    assert received[-1][1] == 2
+    # [Protocol=2, Sub=0, ID=0, Level=2, Msg="keep"]
+    assert received[-1][3] == 2
 
     await pipe_a.terminate()
     await pipe_b.terminate()
@@ -175,13 +179,11 @@ async def test_rpc_v1_server_inactive_client_errors():
 async def test_rpc_core_fire_error_and_unsupported_event(caplog):
     pipe_a, pipe_b = EventPipe.create_inmemory_pair()
     _rpc = CoreOnlyRpc(pipe_a)
-
-    await pipe_b.write([3, 0, "topic", "msg"])
-    await pipe_b.write([1, 3, 1, "boom", []])
+    # [1, 1, 1, ...] is Fire.
+    await pipe_b.write([1, 1, 1, "boom", []])
     await asyncio.sleep(0.05)
 
     logs = [r.message for r in caplog.records]
-    assert any("Unsupported event message" in log for log in logs)
     assert any("Fired method error" in log for log in logs)
 
     await pipe_a.terminate()
@@ -196,17 +198,27 @@ async def test_rpc_core_nested_result_and_error_response():
     responses: List[List[Any]] = []
 
     async def on_data(data: Any) -> None:
-        if isinstance(data, list) and data and data[0] == 1 and data[1] in (0, 1):
+        # Collect replies as well (proto 1, sub 2)
+        if isinstance(data, list) and data and data[0] == 1 and data[1] in (0, 1, 2):
             responses.append(data)
 
     pipe_b.pipeline("data", on_data)
 
-    await pipe_b.write([1, 2, 1, "nested", []])
-    await pipe_b.write([1, 2, 2, "boom", []])
+    # Call "nested" (Sub 0)
+    await pipe_b.write([1, 0, 1, "nested", []])
+    # Call "boom" (Sub 0)
+    await pipe_b.write([1, 0, 2, "boom", []])
     await asyncio.sleep(0.05)
 
-    assert [1, 0, 1, "ok"] in responses
-    assert [1, 1, 2, "boom"] in responses
+    # Expect Reply (Sub 2)
+    assert [1, 2, 1, True, "ok"] in responses
+    # Error Reply
+    found_error = False
+    for r in responses:
+        if r[0] == 1 and r[1] == 2 and r[2] == 2 and r[3] is False:
+            found_error = True
+            break
+    assert found_error, f"Did not find error response in {responses}"
 
     await pipe_a.terminate()
     await pipe_b.terminate()

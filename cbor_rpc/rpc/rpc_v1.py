@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Callable
 from abc import ABC, abstractmethod
 import asyncio
 import inspect
+import logging
 
 from .rpc_base import RpcInitClient
 from .rpc_call import RpcCallHandle
@@ -10,6 +11,8 @@ from .logging import RpcLogger
 from .context import RpcCallContext, current_request_id
 from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc.timed_promise import TimedPromise
+
+logger = logging.getLogger(__name__)
 
 
 class RpcV1(RpcInitClient):
@@ -25,16 +28,10 @@ class RpcV1(RpcInitClient):
         self._peer_log_level = 5  # Default to Debug for Godlike logging
 
         # Initialize Logger
-        def send_log(level: int, proto: int, id_: Any, content: Any) -> None:
-            # Log Protocol: [2, 0, ID, Level, Content]
-            if level <= self._peer_log_level:
-                asyncio.create_task(self.pipe.write([2, 0, id_, level, content]))
-
-        # We need a dynamic ID provider for the logger?
         # For outgoing logs (Server -> Client), ID should reference the REQUEST ID if currently handling one?
         # Or just use 0 if global?
         # For now, simplistic logger attached to instance.
-        self.logger = RpcLogger(send_log, 1, lambda: 0)
+        self.logger = RpcLogger(self.pipe, lambda: 0, self._peer_log_level)
         # Lambda 0 is placeholder. Ideally context contextvars would be used to get current request ID.
 
         async def resolve_result(result: Any) -> Any:
@@ -46,10 +43,11 @@ class RpcV1(RpcInitClient):
         async def on_data(data: List[Any]) -> None:
             try:
                 if not isinstance(data, list) or len(data) < 3:
-                    print(f"RpcV1: Invalid message format: {data}", file=sys.stderr)
+                    logger.warning(f"Invalid message format: {data}")
                     return
 
                 protocol_id = data[0]
+
                 sub_protocol = data[1]
 
                 # Protocol 2: Streaming (Logs/Progress)
@@ -91,13 +89,13 @@ class RpcV1(RpcInitClient):
                         return
 
                 if len(data) != 5:
-                    print(f"RpcV1: Invalid message format for Proto 1: {data}", file=sys.stderr)
+                    logger.warning(f"Invalid message format for Proto 1: {data}")
                     return
                 id_, method, params = data[2], data[3], data[4]
 
                 if protocol_id != 1:
 
-                    print(f"RpcV1: Unsupported protocol: {data}", file=sys.stderr)
+                    logger.warning(f"Unsupported protocol: {data}")
                     return
                 # print("RpvV1: Received", data, file=sys.stderr)
 
@@ -117,10 +115,7 @@ class RpcV1(RpcInitClient):
                                 if sub_protocol == 0:
                                     await self.pipe.write([1, 2, id_, False, str(e)])
                                 else:
-                                    print(
-                                        f"Fired method error: {method}, params={params}, error={e}",
-                                        file=sys.stderr,
-                                    )
+                                    logger.error(f"Fired method error: {method}, params={params}, error={e}")
                             finally:
                                 self._incoming_contexts.pop(id_, None)
 
@@ -132,10 +127,7 @@ class RpcV1(RpcInitClient):
                         if sub_protocol == 0:
                             asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
                         else:
-                            print(
-                                f"Fired method error: {method}, params={params}, error={e}",
-                                file=sys.stderr,
-                            )
+                            logger.error(f"Fired method error: {method}, params={params}, error={e}")
                     finally:
                         current_request_id.reset(token)
 
@@ -149,15 +141,13 @@ class RpcV1(RpcInitClient):
                             await promise.reject(params)
                     else:
                         # Fallback for old promises if any? No.
-                        print(
-                            f"Received rpc reply for expired request id: {id_}, success={method}, data={params}",
-                            file=sys.stderr,
+                        logger.warning(
+                            f"Received rpc reply for expired request id: {id_}, success={method}, data={params}"
                         )
                 else:
-                    print(f"RpcV1: Invalid direction: {sub_protocol}", file=sys.stderr)
-
+                    logger.warning(f"RpcV1: Invalid direction: {sub_protocol}")
             except Exception as e:
-                print(f"Error processing RPC message: {e}", file=sys.stderr)
+                logger.error(f"Error in on_data: {e}", exc_info=True)
 
         self.pipe.on("data", on_data)
 
@@ -165,14 +155,11 @@ class RpcV1(RpcInitClient):
         counter = self._counter
         self._counter += 1
 
-        def cancel_cb():
-            asyncio.create_task(self.pipe.write([1, 3, counter]))
-
         def timeout_callback():
             self._active_calls.pop(counter, None)
 
         promise = TimedPromise(self._timeout, timeout_callback)
-        handle = RpcCallHandle(counter, promise, cancel_cb)
+        handle = RpcCallHandle(counter, promise, self.pipe)
         self._active_calls[counter] = handle
 
         asyncio.create_task(self.pipe.write([1, 0, counter, method, list(args)]))
@@ -244,10 +231,12 @@ class RpcV1(RpcInitClient):
                         asyncio.create_task(self.pipe.write([2, 1, req_id, value, meta]))
 
                 request_logger = RpcLogger(
-                    self.logger._send_log, self.logger._ref_proto, lambda: req_id if req_id is not None else 0
+                    self.pipe,
+                    lambda: req_id if req_id is not None else 0,
+                    self._peer_log_level,
                 )
 
-                context = RpcCallContext(request_logger, emit_progress)
+                context = RpcCallContext(req_id, request_logger, emit_progress)
                 if req_id is not None:
                     self.register_incoming_context(req_id, context)
                 return method_handler(context, method, args)

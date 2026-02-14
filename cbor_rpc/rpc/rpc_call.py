@@ -9,10 +9,10 @@ class RpcCallHandle:
     Allows listening for logs, progress updates, and cancelling the call.
     """
 
-    def __init__(self, id_: int, promise: TimedPromise, cancel_cb: Callable[[], None]):
+    def __init__(self, id_: int, promise: TimedPromise, pipe: Any):
         self._id = id_
         self._promise = promise
-        self._cancel_cb = cancel_cb
+        self._pipe = pipe
         self._log_listeners: List[Callable[[int, Any], None]] = []
         self._progress_listeners: List[Callable[[Any, Any], None]] = []
         self._last_progress: Optional[Any] = None
@@ -79,3 +79,9 @@ class RpcCallHandle:
                 listener(value, metadata)
             except Exception:
                 pass
+
+    def cancel(self) -> None:
+        """Cancel the RPC call."""
+        import asyncio
+
+        asyncio.create_task(self._pipe.write([1, 3, self._id]))
