@@ -26,7 +26,7 @@ async def test_rpc_call_handle_logging():
     client = create_client(pipe_client)
 
     # Create call
-    handle = client.create_call("test_method", "arg1")
+    handle = client.create_call("test_method", "arg1").call()
     call_id = handle.id
 
     logs = []
@@ -52,7 +52,7 @@ async def test_rpc_call_handle_progress():
     client = create_client(pipe_client)
 
     # Create call
-    handle = client.create_call("heavy_task")
+    handle = client.create_call("heavy_task").call()
     call_id = handle.id
 
     progress = []
@@ -85,13 +85,13 @@ async def test_rpc_call_cancellation():
     pipe_server.on("data", capture_server_msgs)
 
     # Create and Cancel
-    handle = client.create_call("cancel_me")
+    handle = client.create_call("cancel_me").call()
     call_id = handle.id
 
     # Wait for the initial call message to arrive at server
     await asyncio.sleep(0.01)
 
-    handle.cancel()
+    await handle.cancel()
 
     await asyncio.sleep(0.01)
 
@@ -120,9 +120,10 @@ async def test_rpc_call_timeout():
 
     # Create call that server never answers (but we write it to keep pipe alive)
     handle = client.create_call("slow_method")
+    handle.call()
 
     with pytest.raises(Exception) as excinfo:  # TimedPromise raises Exception on timeout
-        await handle.result
+        await handle.result()
 
     assert "Timeout" in str(excinfo.value)
 
@@ -135,7 +136,6 @@ async def test_rpc_call_result_resolution():
     # Setup
     pipe_client, pipe_server = EventPipe.create_inmemory_pair()
     client = create_client(pipe_client)
-
     handle = client.create_call("calc")
     call_id = handle.id
 
@@ -143,8 +143,32 @@ async def test_rpc_call_result_resolution():
     # Note: RpcV1 writes are usually async, but creating the task manualy on server pipe
     asyncio.create_task(pipe_server.write([1, 2, call_id, True, 42]))
 
-    result = await handle.result
+    result = await handle.result()
     assert result == 42
+
+    await pipe_client.terminate()
+    await pipe_server.terminate()
+
+
+@pytest.mark.asyncio
+async def test_rpc_call_awaitable():
+    # Setup
+    pipe_client, pipe_server = EventPipe.create_inmemory_pair()
+    client = create_client(pipe_client)
+
+    async def server_handler(data):
+        # Respond to call
+        if isinstance(data, list) and len(data) >= 3 and data[0] == 1 and data[1] == 0:
+            call_id = data[2]
+            # Reply: [Protocol=1, Sub=2(Reply), ID, Result]
+            await pipe_server.write([1, 2, call_id, True, "Success"])
+
+    pipe_server.on("data", server_handler)
+
+    # Await handle directly
+    result = await client.create_call("my_method")
+
+    assert result == "Success"
 
     await pipe_client.terminate()
     await pipe_server.terminate()

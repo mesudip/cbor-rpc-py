@@ -31,11 +31,11 @@ async def test_rpc_cancellation():
     rpc = RpcV1.make_rpc_v1(pipe, "self", method_handler)
 
     # Make call
-    call_handle = rpc.create_call("long_op", 1.0)
+    call_handle = rpc.create_call("long_op", 1.0).call()
 
     # Wait a bit then cancel
     await asyncio.sleep(0.1)
-    call_handle.cancel()
+    await call_handle.cancel()
 
     # Wait for server to detect cancellation
     try:
@@ -43,6 +43,6 @@ async def test_rpc_cancellation():
     except asyncio.TimeoutError:
         pytest.fail("Server did not detect cancellation")
 
-    res = await call_handle.result
+    res = await call_handle.result()
     # The server function returns "Cancelled" when it detects the flag
     assert res == "Cancelled"

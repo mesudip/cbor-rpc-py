@@ -169,7 +169,8 @@ async def test_rpc_calls_with_logging(rpc_client):
     progress = []
     handle.on_progress(lambda val, meta: progress.append((val, meta)))
 
-    result = await handle.result
+    handle.call()
+    result = await handle.result()
     assert result == "ok"
 
     # Verify logs received
@@ -192,13 +193,13 @@ async def test_rpc_calls_with_logging(rpc_client):
 
     # Test Cancellation
     # cancel_me waits 1s. We cancel immediately.
-    cancel_handle = rpc_client.create_call("cancel_me")
+    cancel_handle = rpc_client.create_call("cancel_me").call()
     await asyncio.sleep(0.1)
 
-    cancel_handle.cancel()
+    await cancel_handle.cancel()
 
     try:
-        await asyncio.wait_for(cancel_handle.result, timeout=0.5)
+        await asyncio.wait_for(cancel_handle.result(), timeout=0.5)
         # If it returns "too_late", cancellation failed.
         # If it timeouts, that's arguably success (server execution stopped/didn't return).
     except asyncio.TimeoutError:

@@ -155,18 +155,32 @@ class RpcV1(RpcInitClient):
         counter = self._counter
         self._counter += 1
 
-        def timeout_callback():
-            self._active_calls.pop(counter, None)
+        def start_callback(handle: RpcCallHandle) -> TimedPromise:
+            def timeout_callback():
+                self._active_calls.pop(counter, None)
 
-        promise = TimedPromise(self._timeout, timeout_callback)
-        handle = RpcCallHandle(counter, promise, self.pipe)
-        self._active_calls[counter] = handle
+            # Use the timeout from the handle, as it might have been modified
+            promise = TimedPromise(handle._timeout, timeout_callback)
 
-        asyncio.create_task(self.pipe.write([1, 0, counter, method, list(args)]))
+            # Register the handle in active calls
+            self._active_calls[counter] = handle
+
+            # Send the RPC call
+            asyncio.create_task(self.pipe.write([1, 0, counter, method, list(args)]))
+            return promise
+
+        handle = RpcCallHandle(
+            id_=counter,
+            pipe=self.pipe,
+            method=method,
+            args=list(args),
+            timeout=self._timeout,
+            start_callback=start_callback,
+        )
         return handle
 
     async def call_method(self, method: str, *args: Any) -> Any:
-        return await self.create_call(method, *args).result
+        return await self.create_call(method, *args).call().result()
 
     async def fire_method(self, method: str, *args: Any) -> None:
         counter = self._counter

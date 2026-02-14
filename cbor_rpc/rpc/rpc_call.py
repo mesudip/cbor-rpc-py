@@ -1,6 +1,7 @@
 from typing import Any, Callable, Optional, List
 from asyncio import Future
 from cbor_rpc.timed_promise import TimedPromise
+import asyncio
 
 
 class RpcCallHandle:
@@ -9,10 +10,22 @@ class RpcCallHandle:
     Allows listening for logs, progress updates, and cancelling the call.
     """
 
-    def __init__(self, id_: int, promise: TimedPromise, pipe: Any):
+    def __init__(
+        self,
+        id_: int,
+        pipe: Any,
+        method: str,
+        args: List[Any],
+        timeout: int,
+        start_callback: Callable[["RpcCallHandle"], TimedPromise],
+    ):
         self._id = id_
-        self._promise = promise
         self._pipe = pipe
+        self._method = method
+        self._args = args
+        self._timeout = timeout
+        self._start_callback = start_callback
+        self._promise: Optional[TimedPromise] = None
         self._log_listeners: List[Callable[[int, Any], None]] = []
         self._progress_listeners: List[Callable[[Any, Any], None]] = []
         self._last_progress: Optional[Any] = None
@@ -22,10 +35,29 @@ class RpcCallHandle:
     def id(self) -> int:
         return self._id
 
-    @property
-    def result(self) -> Future:
-        """The future that resolves to the RPC result."""
-        return self._promise.promise
+    async def result(self) -> Any:
+        """
+        The future that resolves to the RPC result.
+        Triggers the call if it hasn't been started yet.
+        """
+        if self._promise is None:
+            self.call()
+        if self._promise is None:
+            raise RuntimeError("Call could not be started.")
+        return await self._promise.promise
+
+    def __await__(self):
+        return self.result().__await__()
+
+    def set_timeout(self, timeout_ms: int) -> "RpcCallHandle":
+        if self._promise is not None:
+            raise RuntimeError("Cannot set timeout after call has started.")
+        self._timeout = timeout_ms
+
+    def call(self) -> "RpcCallHandle":
+        if self._promise is not None:
+            return self
+        self._promise = self._start_callback(self)
 
     def on_log(self, callback: Callable[[int, Any], None]) -> "RpcCallHandle":
         """
@@ -41,25 +73,10 @@ class RpcCallHandle:
         Callback signature: (value: Any, metadata: Any)
         """
         self._progress_listeners.append(callback)
-        # If we already have progress, maybe valid to emit?
-        # Usually listeners are attached before execution starts or during.
-        # But if attached late, might miss previous events.
-        # For now, just append.
-        return self
 
     def get_progress(self) -> Any:
         """Returns the last received progress value."""
         return self._last_progress
-
-    def cancel(self) -> None:
-        """Cancels the RPC call."""
-        self._cancel_cb()
-
-        # We might also want to reject the promise locally if we desire fast fail
-        # but typically we wait for server ack or just timeout.
-        # However, for UI responsiveness, we might want to fail the promise with CancelledError?
-        # The prompt says "Client should be able to ... send cancel()".
-        pass
 
     # Internal methods called by RpcV1
 
@@ -80,8 +97,6 @@ class RpcCallHandle:
             except Exception:
                 pass
 
-    def cancel(self) -> None:
+    async def cancel(self) -> None:
         """Cancel the RPC call."""
-        import asyncio
-
-        asyncio.create_task(self._pipe.write([1, 3, self._id]))
+        await self._pipe.write([1, 3, self._id])
