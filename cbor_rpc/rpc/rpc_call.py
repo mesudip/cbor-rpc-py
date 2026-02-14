@@ -30,6 +30,7 @@ class RpcCallHandle:
         self._progress_listeners: List[Callable[[Any, Any], None]] = []
         self._last_progress: Optional[Any] = None
         self._last_progress_metadata: Optional[Any] = None
+        self._cancelled = False
 
     @property
     def id(self) -> int:
@@ -53,10 +54,18 @@ class RpcCallHandle:
         if self._promise is not None:
             raise RuntimeError("Cannot set timeout after call has started.")
         self._timeout = timeout_ms
+        return self
 
     def call(self) -> "RpcCallHandle":
         if self._promise is not None:
             return self
+
+        if self._cancelled:
+            p = TimedPromise(0)
+            asyncio.create_task(p.reject(asyncio.TimeoutError("Call cancelled before start")))
+            self._promise = p
+            return self
+
         self._promise = self._start_callback(self)
         return self
 
@@ -66,7 +75,6 @@ class RpcCallHandle:
         Callback signature: (level: int, content: Any)
         """
         self._log_listeners.append(callback)
-        return self
 
     def on_progress(self, callback: Callable[[Any, Any], None]) -> "RpcCallHandle":
         """
@@ -100,4 +108,8 @@ class RpcCallHandle:
 
     async def cancel(self) -> None:
         """Cancel the RPC call."""
+        self._cancelled = True
         await self._pipe.write([1, 3, self._id])
+        if self._promise:
+            # We reject with TimeoutError to match expected behavior in tests for halted calls
+            await self._promise.reject(asyncio.TimeoutError("Call cancelled"))

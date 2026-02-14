@@ -16,6 +16,7 @@ class SshPipe(AioPipe[bytes, bytes]):
         writer: asyncio.StreamWriter,
         ssh_channel: asyncssh.SSHClientChannel | asyncssh.SSHClientProcess,
     ):
+        print("Setting up new ssh channel")
         super().__init__(reader, writer)
 
         async def _forward_stdout(data: bytes) -> None:
@@ -39,7 +40,8 @@ class SshPipe(AioPipe[bytes, bytes]):
                     if not data:  # EOF reached
                         break
                     try:
-                        await self._notify("data", data)
+                        # Stderr should not be mixed with data channel (stdout/protocol)
+                        # await self._notify("data", data)
                         await self._notify("stderr", data)
                     except Exception as e:
                         self._emit("error", e)  # Synchronous _emit
@@ -81,7 +83,7 @@ class SshPipe(AioPipe[bytes, bytes]):
                     print("Force aborting SSH channel...")
                     cl_chan.abort()
                 elif isinstance(self._ssh_channel, asyncssh.SSHClientProcess):
-                    print("Force killing SSH process...")
+                    print("Force killing SSH client process...")
                     cl_proc: asyncssh.SSHClientProcess = self._ssh_channel
                     cl_proc.kill()
             await self._ssh_channel.wait_closed()  # Ensure the AioPipe is fully closed

@@ -34,7 +34,7 @@ class RpcV1(RpcInitClient):
         self.logger = RpcLogger(self.pipe, lambda: 0, self._peer_log_level)
         # Lambda 0 is placeholder. Ideally context contextvars would be used to get current request ID.
 
-        self.pipe.on("data", self._on_data)
+        self.pipe.pipeline("data", self._on_data)
 
     async def _resolve_result(self, result: Any) -> Any:
         """Recursively resolve coroutines or nested coroutines."""
@@ -54,6 +54,14 @@ class RpcV1(RpcInitClient):
                 handle._emit_log(method, params)
             elif sub_protocol == 1:  # Progress
                 handle._emit_progress(method, params)
+        else:
+            if sub_protocol == 0:
+                # If we receive a log for unknown ID (or 0), we might want to log it to system
+                logger.info(f"Received stream log for unknown ID {id_}: {params}")
+                if id_ == 0:
+                    print(f"[Remote System Log] {params}", file=sys.stderr)
+            else:
+                logger.warning(f"Received stream message for unknown/inactive ID {id_}: {data}")
 
     async def _handle_event_message(self, data: List[Any]) -> None:
         # Protocol 3: Events [3, 0, Topic, Message]

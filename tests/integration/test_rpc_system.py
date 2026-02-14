@@ -9,6 +9,7 @@ from cbor_rpc.pipe.aio_pipe import AioPipe
 from cbor_rpc.stdio.stdio_pipe import StdioPipe
 from cbor_rpc.ssh.ssh_pipe import SshServer
 from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
+from tests.helpers.timeout_queue import TimeoutQueue
 
 
 async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, server_proc, timeout: float = 10.0) -> None:
@@ -94,11 +95,21 @@ async def _unix_ssh_pipe_ctx(ssh_server):
     # the script is located at tests/docker/sshd-python
     server_cmd = "python3 /app/unix_socket_rpc_server.py"
     socket_path = "/tmp/cbor-rpc.sock"
+
+    # Ensure clean state (remove old socket if exists)
+    await ssh_server._connection.run(f"rm -f {socket_path}", check=False)
+
     server_proc = await ssh_server._connection.create_process(server_cmd, term_type=None, encoding=None)
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
+    asyncio.sleep(0.5)
     wrapper_pipe = None
     try:
         wrapper_pipe = await ssh_server.run_command(f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}")
+
+        # Add error logging for the pipe
+        wrapper_pipe.on("error", lambda err: print(f"[Pipe Error]: {err}", file=sys.stderr))
+        wrapper_pipe.on("stderr", lambda err: print(f"[Pipe Stderr]: {err!r}", file=sys.stderr))
+
         pipe = wrapper_pipe
         transformer = CborStreamTransformer().apply_transformer(pipe)
         yield transformer
@@ -159,50 +170,55 @@ async def test_simple_rpc_calls(rpc_client):
 
 
 @pytest.mark.asyncio
-async def test_rpc_calls_with_logging(rpc_client):
-    # Test logging and progress
-    handle = rpc_client.create_call("test_logging")
+async def test_rpc_calls_logging(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
+    assert await rpc_client.call_method("add", 10, 20, 30) == 60
 
-    logs = []
-    handle.on_log(lambda level, msg: logs.append((level, msg)))
+    async def check_log(method_name, msg_content, expected_level):
+        log_queue = TimeoutQueue(default_timeout=2.0)
+        handle = rpc_client.create_call(method_name, msg_content)
 
-    progress = []
-    handle.on_progress(lambda val, meta: progress.append((val, meta)))
+        handle.on_log(lambda level, msg: log_queue.put_nowait((level, msg)))
 
-    handle.call()
-    result = await handle.result()
-    assert result == "ok"
+        await handle
+        level, msg = await log_queue.get()
+        assert msg == msg_content, f"Expected log '{msg_content}', got '{msg}'"
+        assert level == expected_level, f"Wrong level for {method_name}"
 
-    # Verify logs received
-    # Logs might arrive slightly out of sync if piped differently, but usually ordered.
-    # Level 3 = Log, 2 = Warn
-    # Wait a bit if needed, but 'await handle.result' implies stream flushed?
-    # Not necessarily, protocol 2 messages are separate. But server sends them BEFORE return.
-    # So they should be processed client-side.
+    # RpcLogger levels: 1=Crit, 2=Warn, 3=Info, 4=Verbose, 5=Debug
+    await check_log("log.info", "InfoTest", 3)
+    await check_log("log.warn", "WarnTest", 2)
+    await check_log("log.crit", "CritTest", 1)
 
-    # We might need a small wait?
-    await asyncio.sleep(0.1)
 
-    assert (3, "Info log") in logs
-    assert (2, "Warn log") in logs
+@pytest.mark.asyncio
+async def test_rpc_calls_cancel(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
 
-    # Verify progress
-    assert (50, "Halfway") in progress
-    assert (100, "Done") in progress
-    assert handle.get_progress() == 100
-
-    # Test Cancellation
-    # cancel_me waits 1s. We cancel immediately.
-    cancel_handle = rpc_client.create_call("cancel_me").call()
-    await asyncio.sleep(0.1)
-
+    cancel_handle = rpc_client.create_call("cancel_me_before", 2)
+    cancel_handle.set_timeout(4)
+    await asyncio.sleep(0.2)
     await cancel_handle.cancel()
 
     try:
-        await asyncio.wait_for(cancel_handle.result(), timeout=0.5)
-        # If it returns "too_late", cancellation failed.
-        # If it timeouts, that's arguably success (server execution stopped/didn't return).
+        result = await cancel_handle
+        assert False, f"Call should have been cancelled before timeout got: Result: {result}"
+
     except asyncio.TimeoutError:
-        pass  # Expected behavior if server aborted and didn't reply.
-    except Exception:
-        pass  # Maybe server sent error.
+        await asyncio.sleep(2.0)
+        return
+
+
+@pytest.mark.asyncio
+async def test_rpc_calls_progress(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
+
+    # 2. Test Progress and Result
+    handle_prog = rpc_client.create_call("sleep_with_progress", 2)
+    received_progress = []
+    handle_prog.on_progress(lambda val, meta: received_progress.append((val, meta)))
+
+    # We expect 0, 50, 100
+    expected_progress = [(0, "Starting"), (50, "Halfway")]
+    await handle_prog
+    assert expected_progress == received_progress

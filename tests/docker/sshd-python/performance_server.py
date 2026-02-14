@@ -30,20 +30,29 @@ class PerformanceServer(RpcV1Server):
         if method == "echo":
             # Just return whatever is sent
             return args[0]
-        elif method == "test_logging":
-            context.logger.log("Info log")
-            await asyncio.sleep(0.01)
-            context.logger.warn("Warn log")
-            await asyncio.sleep(0.01)
-            # Emit progress via context
+        elif method == "log.info":
+            context.logger.info(*args)
+            await asyncio.sleep(0.1)  # Simulate some delay in logging
+
+        elif method == "log.warn":
+            context.logger.warn(*args)
+            await asyncio.sleep(0.1)  # Simulate some delay in logging
+
+        elif method == "log.error":
+            context.logger.error(*args)
+            await asyncio.sleep(0.1)  # Simulate some delay in logging
+
+        elif method == "log.crit":
+            context.logger.crit(*args)
+            await asyncio.sleep(0.1)  # Simulate some delay in logging
+
+        elif method == "sleep_with_progress":
+            context.progress(0, "Starting")
+            await asyncio.sleep(args[0] / 2)
             context.progress(50, "Halfway")
-            await asyncio.sleep(0.01)
-            context.progress(100, "Done")
-            await asyncio.sleep(0.01)  # Ensure progress is flushed before response
-            return "ok"
-        elif method == "cancel_me":
-            await asyncio.sleep(1)  # Wait for cancel
-            return "too_late"  # Should not be reached if cancelled
+            await asyncio.sleep(args[0] / 2)
+        elif method == "cancel_me_before":
+            await asyncio.sleep(args[0])
         elif method == "download_random":
             size = args[0]
             # Generate random bytes? Generating 10MB random might be slow in python if clear.

@@ -33,6 +33,9 @@ class RpcLogger:
     def log(self, content: Any) -> None:
         self._write(3, content)  # Info/Log
 
+    def info(self, content: Any) -> None:
+        self._write(3, content)  # Info/Log
+
     def warn(self, content: Any) -> None:
         self._write(2, content)  # Warning
 
