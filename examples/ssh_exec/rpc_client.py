@@ -2,7 +2,7 @@ import asyncio
 import argparse
 import sys
 from cbor_rpc.ssh.ssh_pipe import SshServer
-from cbor_rpc.rpc import RpcClient
+from cbor_rpc.rpc import RpcV1
 from cbor_rpc.transformer.json_transformer import JsonStreamTransformer
 
 
@@ -42,7 +42,7 @@ async def main():
     json_pipe = JsonStreamTransformer().apply_transformer(pipe)
 
     # Create RPC Client using the SSH pipe
-    client = RpcClient(json_pipe)
+    client = RpcV1.read_only_client(json_pipe)
 
     # -------------------------------------------------------------
     # Setup Remote Server Log Monitoring (Stderr)
@@ -72,7 +72,7 @@ async def main():
     # -------------------------------------------------------------
     # Setup Log Handling (RPC Protocol Logs)
     # The server uses context.logger.info/warn/etc to send logs.
-    # We can subscribe to these log events on the RpcClient.
+    # We can subscribe to these log events on the RpcInitClient.
     # -------------------------------------------------------------
     def on_log(level, content):
         prefix = "[RPC LOG]"
@@ -80,8 +80,6 @@ async def main():
             print(f"{prefix} ERROR: {content}", file=sys.stderr)
         else:
             print(f"{prefix} INFO: {content}")
-
-    client.set_on_log(on_log)
 
     try:
         # Example RPC call.
@@ -93,11 +91,19 @@ async def main():
         cmd_to_run = "echo 'Hello from inside subprocess'; sleep 1; echo 'Done sleeping'"
 
         print(f">>> Calling remote exec('{cmd_to_run}')")
-        exit_code = await client.request("exec", [cmd_to_run])
+
+        # Create handle for execution
+        exec_handle = client.create_call("exec", [cmd_to_run])
+        # Register log listener
+        exec_handle.on_log(on_log)
+
+        exit_code = await exec_handle.call().result()
         print(f"<<< Remote exec finished with exit code: {exit_code}")
 
         print("\nCalling 'ls' on remote...")
-        files = await client.request("ls", ["."])
+        ls_handle = client.create_call("ls", ["."])
+        ls_handle.on_log(on_log)
+        files = await ls_handle.call().result()
         print("Remote files:")
         for f in files:
             print(f" - {f}")
@@ -106,7 +112,8 @@ async def main():
         print(f"RPC Call failed: {e}")
 
     # Clean up
-    await client.close()
+    if hasattr(pipe, "terminate"):
+        await pipe.terminate()
 
     # Wait for stderr task to finish? It might block if server doesn't close stderr.
     # Usually closing client/pipe closes the session which closes stderr.

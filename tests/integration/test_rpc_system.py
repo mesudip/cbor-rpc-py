@@ -3,12 +3,13 @@ import os
 import tempfile
 import sys
 import pytest
-import asyncssh
+from contextlib import asynccontextmanager
 from cbor_rpc import RpcV1
 from cbor_rpc.pipe.aio_pipe import AioPipe
+from cbor_rpc.stdio.stdio_pipe import StdioPipe
 from cbor_rpc.ssh.ssh_pipe import SshServer
 from cbor_rpc.transformer.cbor_transformer import CborStreamTransformer
-from tests.integration.rpc_test_helpers import run_rpc_all_methods
+from tests.helpers.timeout_queue import TimeoutQueue
 
 
 async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, server_proc, timeout: float = 10.0) -> None:
@@ -32,8 +33,24 @@ async def _wait_for_remote_socket(ssh_server: SshServer, socket_path: str, serve
     raise RuntimeError(f"Timed out waiting for remote socket: {socket_path}")
 
 
-@pytest.fixture
-async def unix_socket_pipe():
+@asynccontextmanager
+async def _stdio_pipe_ctx(server_script_path):
+    # Start the server process via StdioPipe
+    pipe = await StdioPipe.start_process(sys.executable, str(server_script_path))
+    try:
+        # Wrap the pipe with CBOR transformer
+        yield CborStreamTransformer().apply_transformer(pipe)
+    finally:
+        # Ensure cleanup
+        await pipe.terminate()
+        try:
+            await pipe.wait_for_process_termination()
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def _unix_local_pipe_ctx():
     import uuid
     from pathlib import Path
 
@@ -42,7 +59,7 @@ async def unix_socket_pipe():
         socket_path.unlink()
     # Path to the actual server script
     server_script = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "rpc_server.py")
+        os.path.join(os.path.dirname(__file__), "..", "docker", "sshd-python", "unix_socket_rpc_server.py")
     )
     # Start the server process
     proc = await asyncio.create_subprocess_exec(
@@ -72,16 +89,27 @@ async def unix_socket_pipe():
                 pass
 
 
-@pytest.fixture
-async def ssh_unix_socket_pipe(ssh_server: SshServer):
+@asynccontextmanager
+async def _unix_ssh_pipe_ctx(ssh_server):
     # Start the server process inside the container
-    server_cmd = "python3 /app/rpc_server.py"
+    # the script is located at tests/docker/sshd-python
+    server_cmd = "python3 /app/unix_socket_rpc_server.py"
     socket_path = "/tmp/cbor-rpc.sock"
+
+    # Ensure clean state (remove old socket if exists)
+    await ssh_server._connection.run(f"rm -f {socket_path}", check=False)
+
     server_proc = await ssh_server._connection.create_process(server_cmd, term_type=None, encoding=None)
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
+    await asyncio.sleep(0.5)
     wrapper_pipe = None
     try:
         wrapper_pipe = await ssh_server.run_command(f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}")
+
+        # Add error logging for the pipe
+        wrapper_pipe.on("error", lambda err: print(f"[Pipe Error]: {err}", file=sys.stderr))
+        wrapper_pipe.on("stderr", lambda err: print(f"[Pipe Stderr]: {err!r}", file=sys.stderr))
+
         pipe = wrapper_pipe
         transformer = CborStreamTransformer().apply_transformer(pipe)
         yield transformer
@@ -95,13 +123,102 @@ async def ssh_unix_socket_pipe(ssh_server: SshServer):
             pass
 
 
-@pytest.mark.asyncio
-async def test_rpc_all_methods_local_unix(unix_socket_pipe):
-    rpc_client = RpcV1.read_only_client(unix_socket_pipe)
-    await run_rpc_all_methods(rpc_client)
+@pytest.fixture(params=["stdio", "unix_local", "unix_ssh"])
+async def rpc_client(request, get_stdio_server_script_path, ssh_server):
+    if request.param == "stdio":
+        async with _stdio_pipe_ctx(get_stdio_server_script_path) as pipe:
+            yield RpcV1.read_only_client(pipe)
+    elif request.param == "unix_local":
+        async with _unix_local_pipe_ctx() as pipe:
+            yield RpcV1.read_only_client(pipe)
+    elif request.param == "unix_ssh":
+        async with _unix_ssh_pipe_ctx(ssh_server) as pipe:
+            yield RpcV1.read_only_client(pipe)
+    else:
+        raise ValueError(f"Unknown param: {request.param}")
 
 
 @pytest.mark.asyncio
-async def test_rpc_all_methods_ssh_unix(ssh_unix_socket_pipe):
-    rpc_client = RpcV1.read_only_client(ssh_unix_socket_pipe)
-    await run_rpc_all_methods(rpc_client)
+async def test_simple_rpc_calls(rpc_client):
+    msg = "Hello World"
+    assert await rpc_client.call_method("echo", msg) == msg
+
+    assert await rpc_client.call_method("add", 1, 2) == 3
+    assert await rpc_client.call_method("add", 10, 20, 30) == 60
+
+    assert await rpc_client.call_method("multiply", 2, 3) == 6
+    assert await rpc_client.call_method("multiply", 2, 3, 4) == 24
+
+    rpc_client.set_timeout(30000)
+    size = 1024 * 1024 * 4
+    data = await rpc_client.call_method("download_random", size)
+    assert isinstance(data, bytes)
+    assert len(data) == size
+
+    test_bytes = b"h" * size
+    length = await rpc_client.call_method("upload_random", test_bytes)
+    assert length == len(test_bytes)
+
+    start = asyncio.get_running_loop().time()
+    res = await rpc_client.call_method("sleep", 0.1)
+    end = asyncio.get_running_loop().time()
+    assert "Slept for 0.1 seconds" in res
+    assert (end - start) >= 0.08
+
+    res = await rpc_client.call_method("random_delay", 0.1)
+    assert "Delayed for 0.1 seconds" in res
+
+
+@pytest.mark.asyncio
+async def test_rpc_calls_logging(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
+    assert await rpc_client.call_method("add", 10, 20, 30) == 60
+
+    async def check_log(method_name, msg_content, expected_level):
+        log_queue = TimeoutQueue(default_timeout=2.0)
+        handle = rpc_client.create_call(method_name, msg_content)
+
+        handle.on_log(lambda level, msg: log_queue.put_nowait((level, msg)))
+
+        await handle
+        level, msg = await log_queue.get()
+        assert msg == msg_content, f"Expected log '{msg_content}', got '{msg}'"
+        assert level == expected_level, f"Wrong level for {method_name}"
+
+    # RpcLogger levels: 1=Crit, 2=Warn, 3=Info, 4=Verbose, 5=Debug
+    await check_log("log.info", "InfoTest", 3)
+    await check_log("log.warn", "WarnTest", 2)
+    await check_log("log.crit", "CritTest", 1)
+
+
+@pytest.mark.asyncio
+async def test_rpc_calls_cancel(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
+
+    cancel_handle = rpc_client.create_call("cancel_me_before", 2)
+    cancel_handle.set_timeout(4)
+    await asyncio.sleep(0.2)
+    await cancel_handle.cancel()
+
+    try:
+        result = await cancel_handle
+        assert False, f"Call should have been cancelled before timeout got: Result: {result}"
+
+    except asyncio.TimeoutError:
+        await asyncio.sleep(2.0)
+        return
+
+
+@pytest.mark.asyncio
+async def test_rpc_calls_progress(rpc_client):
+    rpc_client.pipe.pipeline("data", lambda data: print(f"Raw data: {data}"))  # Debug raw data if needed
+
+    # 2. Test Progress and Result
+    handle_prog = rpc_client.create_call("sleep_with_progress", 2)
+    received_progress = []
+    handle_prog.on_progress(lambda val, meta: received_progress.append((val, meta)))
+
+    # We expect 0, 50, 100
+    expected_progress = [(0, "Starting"), (50, "Halfway")]
+    await handle_prog
+    assert expected_progress == received_progress

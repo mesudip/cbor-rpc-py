@@ -8,7 +8,6 @@ import time
 import asyncio
 
 from cbor_rpc.ssh.ssh_pipe import SshServer
-from tests.integration.rpc_test_helpers import get_stdio_server_script_path as _get_stdio_server_script_path
 
 # Ensure the project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -23,7 +22,7 @@ SSHD_DOCKERFILE_PATH = "./tests/docker/sshd-python"
 
 @pytest.fixture
 def get_stdio_server_script_path():
-    return _get_stdio_server_script_path()
+    return "tests/scripts/stdio_rpc_server.py"
 
 
 @pytest.fixture(scope="session")

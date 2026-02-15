@@ -1,7 +1,7 @@
 from .server_base import Server
 
 
-from .rpc_base import RpcClient, RpcServer, RpcAuthorizedClient
+from .rpc_base import RpcInitClient, RpcServer, RpcClient
 from .rpc_v1 import RpcV1
 from .context import RpcCallContext
 from .logging import RpcLogger

@@ -1,258 +1,232 @@
 import sys
-import logging
 from typing import Any, Dict, List, Optional, Callable
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import asyncio
+import inspect
+import logging
 
-from .rpc_base import RpcClient
-from .context import RpcCallContext
+from .rpc_base import RpcInitClient
+from .rpc_call import RpcCallHandle
 from .logging import RpcLogger
+from .context import RpcCallContext, current_request_id
 from cbor_rpc.pipe.event_pipe import EventPipe
 from cbor_rpc.timed_promise import TimedPromise
 
 logger = logging.getLogger(__name__)
 
 
-class RpcCore(RpcClient):
+class RpcV1(RpcInitClient):
     protocol_id = 1
 
     def __init__(self, pipe: EventPipe[Any, Any]):
         self.pipe = pipe
         self._counter = 0
-        self._promises: Dict[int, TimedPromise] = {}
+        self._active_calls: Dict[int, RpcCallHandle] = {}
+        self._incoming_contexts: Dict[int, RpcCallContext] = {}
         self._timeout = 30000
-        self._peer_log_level = 0
-        self._desired_log_level = 0
-        self.logger = RpcLogger(self._send_log, 1, self._get_default_ref_id)
+        self._waiters: Dict[str, TimedPromise] = {}
+        self._peer_log_level = 5  # Default to Debug for Godlike logging
 
-        async def resolve_result(result: Any) -> Any:
-            """Recursively resolve coroutines or nested coroutines."""
-            while asyncio.iscoroutine(result):
-                result = await result
-            return result
+        # Initialize Logger
+        # For outgoing logs (Server -> Client), ID should reference the REQUEST ID if currently handling one?
+        # Or just use 0 if global?
+        # For now, simplistic logger attached to instance.
+        self.logger = RpcLogger(self.pipe, lambda: 0, self._peer_log_level)
+        # Lambda 0 is placeholder. Ideally context contextvars would be used to get current request ID.
 
-        self._resolve_result = resolve_result
+        self.pipe.pipeline("data", self._on_data)
 
-        async def on_data(data: List[Any]) -> None:
-            try:
-                if not isinstance(data, list) or len(data) < 2:
-                    logger.warning(f"RpcCore: Invalid message format: {data}")
-                    return
+    async def _resolve_result(self, result: Any) -> Any:
+        """Recursively resolve coroutines or nested coroutines."""
+        while asyncio.iscoroutine(result):
+            result = await result
+        return result
 
-                protocol_id = data[0]
-                if protocol_id == 1:
-                    await self._handle_proto_1(data)
-                elif protocol_id == 2:
-                    await self._handle_proto_2(data)
-                elif protocol_id == 3:
-                    await self._handle_proto_3(data)
-                else:
-                    logger.warning(f"RpcCore: Unsupported protocol: {data}")
+    async def _handle_stream_message(self, data: List[Any]) -> None:
+        sub_protocol = data[1]
+        # Protocol 2: Streaming (Logs/Progress)
+        if len(data) != 5:
+            return
+        id_, method, params = data[2], data[3], data[4]
+        handle = self._active_calls.get(id_)
+        if handle:
+            if sub_protocol == 0:  # Log
+                handle._emit_log(method, params)
+            elif sub_protocol == 1:  # Progress
+                handle._emit_progress(method, params)
+        else:
+            if sub_protocol == 0:
+                # If we receive a log for unknown ID (or 0), we might want to log it to system
+                logger.info(f"Received stream log for unknown ID {id_}: {params}")
+                if id_ == 0:
+                    print(f"[Remote System Log] {params}", file=sys.stderr)
+            else:
+                logger.warning(f"Received stream message for unknown/inactive ID {id_}: {data}")
 
-            except Exception as e:
-                logger.error(f"Error processing RPC message: {e}")
+    async def _handle_event_message(self, data: List[Any]) -> None:
+        # Protocol 3: Events [3, 0, Topic, Message]
+        if len(data) != 4:
+            return
+        topic, message = data[2], data[3]
 
-        self.pipe.on("data", on_data)
+        # Resolve waiters
+        waiter = self._waiters.pop(topic, None)
+        if waiter:
+            await waiter.resolve(message)
 
-    async def _handle_proto_1(self, data: List[Any]) -> None:
-        """Handle Protocol 1 (RPC) messages."""
-        if len(data) < 3:
-            logger.warning(f"RpcCore [Proto 1]: Invalid format: {data}")
+        # Call handler
+        asyncio.create_task(self.on_event(topic, message))
+
+    async def _handle_rpc_message(self, data: List[Any]) -> None:
+        sub_protocol = data[1]
+
+        if sub_protocol == 3:  # Cancel
+            if len(data) != 3:
+                return
+            id_ = data[2]
+            ctx = self._incoming_contexts.get(id_)
+            if ctx:
+                ctx.cancelled = True
             return
 
-        sub_proto_id = data[1]
+        if len(data) != 5:
+            logger.warning(f"Invalid message format for Proto 1: {data}")
+            return
+        id_, method, params = data[2], data[3], data[4]
 
-        # Responses: [1, 0, id, result] (Success) or [1, 1, id, error] (Error)
-        if sub_proto_id < 2:
-            if len(data) < 4:
-                logger.warning(f"RpcCore [Proto 1]: Invalid response format: {data}")
-                return
+        if sub_protocol < 2:  # Method call (0) or fire (1)
+            token = current_request_id.set(id_)
+            try:
+                # Create context
+                def emit_progress(value: Any, meta: Any = None):
+                    # Progress Protocol: [2, 1, ID, Value, Metadata]
+                    asyncio.create_task(self.pipe.write([2, 1, id_, value, meta]))
 
-            id_ = data[2]
-            payload = data[3]
-
-            promise = self._promises.pop(id_, None)
-            if promise:
-                if sub_proto_id == 0:  # Success
-                    await promise.resolve(payload)
-                else:  # Error
-                    await promise.reject(payload)
-            else:
-                logger.warning(
-                    f"Received rpc reply for expired request id: {id_}, success={sub_proto_id==0}, data={payload}"
+                request_logger = RpcLogger(
+                    self.pipe,
+                    lambda: id_,
+                    self._peer_log_level,
                 )
 
-        # Method Call (2) or Fire (3): [1, 2/3, id, method, params]
-        elif sub_proto_id == 2 or sub_proto_id == 3:
-            if len(data) < 5:
-                logger.warning(f"RpcCore [Proto 1]: Invalid call format: {data}")
-                return
+                context = RpcCallContext(id_, request_logger, emit_progress)
+                self.register_incoming_context(id_, context)
 
-            id_ = data[2]
-            method = data[3]
-            params = data[4]
-
-            try:
-                # Call the method
-                context = RpcCallContext(self.logger)
+                # Call the method and get the result
                 result = self.handle_method_call(context, method, params)
 
-                if sub_proto_id == 2:  # Expect Response
-
-                    async def handle_response() -> None:
-                        try:
-                            resolved_result = await self._resolve_result(result)
-                            # Send Success: [1, 0, id, result]
-                            await self.pipe.write([1, 0, id_, resolved_result])
-                        except Exception as e:
-                            # Send Error: [1, 1, id, error]
-                            await self.pipe.write([1, 1, id_, str(e)])
-
-                    asyncio.create_task(handle_response())
-                else:
-                    # Fire (3)
-                    async def handle_fire() -> None:
-                        try:
-                            await self._resolve_result(result)
-                        except Exception as e:
+                # Handle the response asynchronously
+                async def handle_response():
+                    try:
+                        resolved_result = await self._resolve_result(result)
+                        if sub_protocol == 0:  # Only respond to method calls, not fire calls
+                            await self.pipe.write([1, 2, id_, True, resolved_result])
+                    except Exception as e:
+                        if sub_protocol == 0:
+                            await self.pipe.write([1, 2, id_, False, str(e)])
+                        else:
                             logger.error(f"Fired method error: {method}, params={params}, error={e}")
+                    finally:
+                        self._incoming_contexts.pop(id_, None)
 
-                    asyncio.create_task(handle_fire())
+                # Create task to handle response
+                asyncio.create_task(handle_response())
 
             except Exception as e:
-                if sub_proto_id == 2:
-                    asyncio.create_task(self.pipe.write([1, 1, id_, str(e)]))
+                self._incoming_contexts.pop(id_, None)
+                if sub_protocol == 0:
+                    asyncio.create_task(self.pipe.write([1, 2, id_, False, str(e)]))
                 else:
                     logger.error(f"Fired method error: {method}, params={params}, error={e}")
+            finally:
+                current_request_id.reset(token)
+
+        elif sub_protocol == 2:  # Response
+            handle = self._active_calls.pop(id_, None)
+            if handle:
+                promise = handle._promise
+                if method is True:  # Success
+                    await promise.resolve(params)
+                else:  # Error
+                    await promise.reject(params)
+            else:
+                # Fallback for old promises if any? No.
+                logger.warning(f"Received rpc reply for expired request id: {id_}, success={method}, data={params}")
         else:
-            logger.warning(f"RpcCore [Proto 1]: Unknown sub-protocol: {sub_proto_id}")
+            logger.warning(f"RpcV1: Invalid direction: {sub_protocol}")
 
-    async def _handle_proto_2(self, data: List[Any]) -> None:
-        """Handle Protocol 2 (Logging) messages."""
-        # Format: [2, log_level, ref_proto, ref_id, content]
-        if len(data) >= 3 and data[1] == 0:
-            self._peer_log_level = data[2]
-            return
+    async def _on_data(self, data: List[Any]) -> None:
+        try:
+            if not isinstance(data, list) or len(data) < 3:
+                logger.warning(f"Invalid message format: {data}")
+                return
 
-        if len(data) < 5:
-            logger.warning(f"RpcCore [Proto 2]: Invalid format: {data}")
-            return
+            protocol_id = data[0]
 
-        log_level = data[1]
+            if protocol_id == 2:
+                await self._handle_stream_message(data)
+                return
 
-        ref_proto = data[2]
-        ref_id = data[3]
-        content = data[4]
+            if protocol_id == 3:
+                await self._handle_event_message(data)
+                return
 
-        level_map = {1: "CRITICAL", 2: "WARN", 3: "INFO", 4: "VERBOSE", 5: "DEBUG"}
-        level_str = level_map.get(log_level, f"LEVEL-{log_level}")
+            if protocol_id == 1:
+                await self._handle_rpc_message(data)
+                return
 
-        logger.info(f"[RemoteLog:{level_str}] p{ref_proto}:{ref_id} {content}")
+            logger.warning(f"Unsupported protocol: {data}")
+        except Exception as e:
+            logger.error(f"Error in on_data: {e}", exc_info=True)
 
-    async def _handle_proto_3(self, data: List[Any]) -> None:
-        logger.warning(f"RpcCore [Proto 3]: Unsupported event message: {data}")
-
-    async def call_method(self, method: str, *args: Any) -> Any:
+    def create_call(self, method: str, *args: Any) -> RpcCallHandle:
         counter = self._counter
         self._counter += 1
 
-        def timeout_callback():
-            self._promises.pop(counter, None)
+        def start_callback(handle: RpcCallHandle) -> TimedPromise:
+            def timeout_callback():
+                self._active_calls.pop(counter, None)
 
-        promise = TimedPromise(self._timeout, timeout_callback)
-        self._promises[counter] = promise
-        # New: [1, 2, counter, method, args]
-        await self.pipe.write([1, 2, counter, method, list(args)])
-        return await promise.promise
+            # Use the timeout from the handle, as it might have been modified
+            promise = TimedPromise(handle._timeout, timeout_callback)
+
+            # Register the handle in active calls
+            self._active_calls[counter] = handle
+
+            # Send the RPC call
+            asyncio.create_task(self.pipe.write([1, 0, counter, method, list(args)]))
+            return promise
+
+        handle = RpcCallHandle(
+            id_=counter,
+            pipe=self.pipe,
+            method=method,
+            args=list(args),
+            timeout=self._timeout,
+            start_callback=start_callback,
+        )
+        return handle
+
+    async def call_method(self, method: str, *args: Any) -> Any:
+        return await self.create_call(method, *args).call().result()
 
     async def fire_method(self, method: str, *args: Any) -> None:
         counter = self._counter
         self._counter += 1
-        # New: [1, 3, counter, method, args]
-        await self.pipe.write([1, 3, counter, method, list(args)])
+        await self.pipe.write([1, 1, counter, method, list(args)])
+
+    async def emit(self, topic: str, message: Any) -> None:
+        # Emit event: Protocol 3
+        await self.pipe.write([3, 0, topic, message])
 
     def set_timeout(self, milliseconds: int) -> None:
         self._timeout = milliseconds
 
-    async def set_log_level(self, level: int) -> None:
-        """Send a request to set the remote log level."""
-        # Protocol 2, Sub-protocol 0: [2, 0, level]
-        self._desired_log_level = level
-        await self.pipe.write([2, 0, level])
-
-    def _get_default_ref_id(self) -> int:
-        return 0
-
-    def _send_log(self, level: int, ref_proto: int, ref_id: Any, content: Any) -> None:
-        if self._peer_log_level <= 0:
-            return
-        if level > self._peer_log_level:
-            return
-        asyncio.create_task(self.pipe.write([2, level, ref_proto, ref_id, content]))
+    def register_incoming_context(self, id_: int, context: RpcCallContext) -> None:
+        self._incoming_contexts[id_] = context
 
     @abstractmethod
     def get_id(self) -> str:
         pass
-
-    @abstractmethod
-    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
-        pass
-
-    @classmethod
-    def make_rpc_v1(
-        cls,
-        pipe: EventPipe[Any, Any],
-        id_: str,
-        method_handler: Callable,
-    ) -> "RpcCore":
-        class ConcreteRpcV1(cls):
-            def get_id(self) -> str:
-                return id_
-
-            def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
-                return method_handler(context, method, args)
-
-            async def on_event(self, context: RpcCallContext, topic: str, message: Any) -> None:
-                return None
-
-        return ConcreteRpcV1(pipe)
-
-    @classmethod
-    def read_only_client(cls, pipe: EventPipe[Any, Any]) -> "RpcCore":
-        def method_handler(context: RpcCallContext, method: str, args: List[Any]) -> Any:
-            raise Exception("Client Only Implementation")
-
-        return cls.make_rpc_v1(pipe, "", method_handler)
-
-
-class RpcV1(RpcCore):
-    def __init__(self, pipe: EventPipe[Any, Any]):
-        super().__init__(pipe)
-        self._waiters: Dict[str, TimedPromise] = {}
-        self._last_event_topic: Optional[str] = None
-        self.event_logger = RpcLogger(self._send_log, 3, self._get_last_event_topic)
-
-    async def _handle_proto_3(self, data: List[Any]) -> None:
-        if len(data) < 4:
-            logger.warning(f"RpcV1 [Proto 3]: Invalid event format: {data}")
-            return
-        sub_proto_id = data[1]
-        if sub_proto_id != 0:
-            logger.warning(f"RpcV1 [Proto 3]: Unknown sub-protocol: {sub_proto_id}")
-            return
-        await self._on_event(data[2], data[3])
-
-    async def emit(self, topic: str, args: Any) -> None:
-        await self.pipe.write([3, 0, topic, args])
-
-    async def _on_event(self, method: str, message: Any) -> None:
-        self._last_event_topic = method
-        waiter = self._waiters.pop(method, None)
-        if waiter:
-            await waiter.resolve(message)
-        else:
-            context = RpcCallContext(self.event_logger)
-            await self.on_event(context, method, message)
 
     async def wait_next_event(self, topic: str, timeout_ms: Optional[int] = None) -> Any:
         if topic in self._waiters:
@@ -270,8 +244,42 @@ class RpcV1(RpcCore):
         return await waiter.promise
 
     @abstractmethod
-    async def on_event(self, context: RpcCallContext, topic: str, message: Any) -> None:
+    def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
         pass
 
-    def _get_last_event_topic(self) -> Any:
-        return self._last_event_topic
+    @abstractmethod
+    async def on_event(self, topic: str, message: Any) -> None:
+        pass
+
+    @staticmethod
+    def make_rpc_v1(
+        pipe: EventPipe[Any, Any],
+        id_: str,
+        method_handler: Callable,
+        event_handler: Optional[Callable] = None,
+    ) -> "RpcV1":
+        class ConcreteRpcV1(RpcV1):
+            def get_id(self) -> str:
+                return id_
+
+            def handle_method_call(self, context: RpcCallContext, method: str, args: List[Any]) -> Any:
+                return method_handler(context, method, args)
+
+            async def on_event(self, topic: str, message: Any) -> None:
+                if event_handler:
+                    if inspect.iscoroutinefunction(event_handler):
+                        await event_handler(topic, message)
+                    else:
+                        event_handler(topic, message)
+
+        return ConcreteRpcV1(pipe)
+
+    @staticmethod
+    def read_only_client(pipe: EventPipe[Any, Any]) -> "RpcV1":
+        def method_handler(context: RpcCallContext, method: str, args: List[Any]) -> Any:
+            raise Exception("Client Only Implementation")
+
+        async def event_handler(topic: str, message: Any) -> None:
+            print(f"Rpc Event dropped {topic} {message}", file=sys.stderr)
+
+        return RpcV1.make_rpc_v1(pipe, "", method_handler, event_handler)

@@ -21,8 +21,8 @@ RUN chmod +x /usr/local/bin/binary_emitter.py
 COPY tests/docker/sshd-python/echo_back.py /usr/local/bin/echo_back.py
 RUN chmod +x /usr/local/bin/echo_back.py
 
-COPY tests/docker/sshd-python/rpc_server.py /usr/local/bin/rpc_server.py
-RUN chmod +x /usr/local/bin/rpc_server.py
+COPY tests/docker/sshd-python/unix_socket_rpc_server.py /usr/local/bin/unix_socket_rpc_server.py
+RUN chmod +x /usr/local/bin/unix_socket_rpc_server.py
 
 COPY tests/docker/sshd-python/performance_server.py /usr/local/bin/performance_server.py
 RUN chmod +x /usr/local/bin/performance_server.py
@@ -37,7 +37,7 @@ RUN chmod +x /usr/local/bin/unix_socket_rpc_wrapper.py
 COPY cbor_rpc /app/cbor_rpc
 
 # Copy the server script
-COPY tests/docker/sshd-python/rpc_server.py /app/rpc_server.py
+COPY tests/docker/sshd-python/unix_socket_rpc_server.py /app/unix_socket_rpc_server.py
 COPY tests/docker/sshd-python/performance_server.py /app/performance_server.py
 COPY tests/docker/sshd-python/unix_socket_bridge.py /app/unix_socket_bridge.py
 COPY tests/docker/sshd-python/unix_socket_rpc_wrapper.py /app/unix_socket_rpc_wrapper.py

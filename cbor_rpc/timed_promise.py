@@ -34,7 +34,10 @@ class TimedPromise:
         if not self._resolved and not self._future.done():
             self._resolved = True
             self._clear_timeout()
-            self._future.set_exception(Exception(error))
+            if isinstance(error, BaseException):
+                self._future.set_exception(error)
+            else:
+                self._future.set_exception(Exception(error))
 
     def _clear_timeout(self) -> None:
         if self._timeout_handle:
