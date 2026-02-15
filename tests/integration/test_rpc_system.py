@@ -101,7 +101,7 @@ async def _unix_ssh_pipe_ctx(ssh_server):
 
     server_proc = await ssh_server._connection.create_process(server_cmd, term_type=None, encoding=None)
     await _wait_for_remote_socket(ssh_server, socket_path, server_proc)
-    asyncio.sleep(0.5)
+    await asyncio.sleep(0.5)
     wrapper_pipe = None
     try:
         wrapper_pipe = await ssh_server.run_command(f"python3 /app/unix_socket_rpc_wrapper.py --socket {socket_path}")

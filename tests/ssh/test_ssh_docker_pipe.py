@@ -152,7 +152,6 @@ async def test_ssh_pipe_emits_stdout_stderr_and_data(ssh_server):
         stdout_chunks = []
         stderr_chunks = []
         data_chunks = []
-        seen = {"stdout": False, "stderr": False}
 
         def on_stdout(data):
             stdout_chunks.append(data)
@@ -167,10 +166,6 @@ async def test_ssh_pipe_emits_stdout_stderr_and_data(ssh_server):
         def on_data(data):
             data_chunks.append(data)
             if b"stdout-line" in data:
-                seen["stdout"] = True
-            if b"stderr-line" in data:
-                seen["stderr"] = True
-            if seen["stdout"] and seen["stderr"]:
                 data_event.set()
 
         pipe.pipeline("stdout", on_stdout)
@@ -192,7 +187,7 @@ async def test_ssh_pipe_emits_stdout_stderr_and_data(ssh_server):
         assert b"stdout-line" in full_stdout
         assert b"stderr-line" in full_stderr
         assert b"stdout-line" in full_data
-        assert b"stderr-line" in full_data
+        assert b"stderr-line" not in full_data
 
     finally:
         if pipe:

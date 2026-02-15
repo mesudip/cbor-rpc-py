@@ -18,7 +18,7 @@ async def test_ssh_pipe_terminate_and_write_eof():
         async def wait_closed(self) -> None:
             return None
 
-        async def terminate(self) -> None:
+        def terminate(self) -> None:
             self._closed = True
 
     pipe = SshPipe(reader, writer, DummyChannel())
