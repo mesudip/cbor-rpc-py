@@ -379,6 +379,14 @@ async def test_cbor_stream_transformer_paths():
 
 
 @pytest.mark.asyncio
+async def test_cbor_stream_transformer_allows_break_inside_indefinite_array():
+    transformer = CborStreamTransformer()
+
+    # 0x9f starts an indefinite-length array; 0xff validly terminates it.
+    assert await transformer.decode(b"\x9f\x01\x02\xff") == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_cbor_stream_transformer_overflow():
     transformer = CborStreamTransformer(max_buffer_bytes=4)
 

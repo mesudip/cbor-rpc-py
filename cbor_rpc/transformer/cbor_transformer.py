@@ -5,19 +5,18 @@ from typing import Any, Union
 from .base import Transformer, AsyncTransformer
 from cbor_rpc.transformer.base.base_exception import NeedsMoreDataException
 
-# Use the pure-Python CBORDecoder to avoid buffering issues with the C extension
-# when using stream-slicing logic.
+# cbor2 5.x's public C decoder reads ahead, which makes stream.tell() unsuitable
+# for slicing one item from a sequence of concatenated CBOR objects. Its private
+# Python decoder does not read ahead. cbor2 6.x removed the Python implementation,
+# and its public decoder reports the consumed stream position correctly.
 try:
-    from cbor2._decoder import CBORDecoder as PythonCBORDecoder
+    from cbor2._decoder import CBORDecoder as StreamCBORDecoder
 except ImportError:
-    from cbor2 import CBORDecoder as PythonCBORDecoder
+    from cbor2 import CBORDecoder as StreamCBORDecoder
 
-# Import pure-Python break_marker / CBORDecodeError so we can handle both
-# C-extension and pure-Python backends uniformly.
-try:
-    from cbor2._types import break_marker as _py_break_marker
-except ImportError:
-    _py_break_marker = cbor2.break_marker
+
+_CBOR_BREAK_BYTE = 0xFF
+_CBOR_DECODE_VALUE_ERROR = getattr(cbor2, "CBORDecodeValueError", None)
 
 
 def _is_eof_error(exc: Exception) -> bool:
@@ -77,18 +76,24 @@ class CborStreamTransformer(AsyncTransformer[Any, Any]):
 
     def _decode_one(self) -> Any:
         """Decode exactly one CBOR object from the front of the buffer."""
+        # A break byte is valid only inside an indefinite-length CBOR item. At
+        # the top level, older cbor2 versions return a private sentinel while
+        # newer versions return an opaque object. Reject it before decoding so
+        # the behavior is consistent without depending on private sentinels.
+        if self._buffer[0] == _CBOR_BREAK_BYTE:
+            raise cbor2.CBORDecodeError("Unexpected break marker")
+
         stream = BytesIO(self._buffer)
-        decoder = PythonCBORDecoder(stream)
+        decoder = StreamCBORDecoder(stream)
         try:
             obj = decoder.decode()
         except Exception as e:
             # Normalize value errors to CBORDecodeError for consistent API behavior.
-            if isinstance(e, cbor2.CBORDecodeValueError) or type(e).__name__ == "CBORDecodeValueError":
+            if (_CBOR_DECODE_VALUE_ERROR is not None and isinstance(e, _CBOR_DECODE_VALUE_ERROR)) or type(
+                e
+            ).__name__ == "CBORDecodeValueError":
                 raise cbor2.CBORDecodeError(str(e)) from e
             raise
-
-        if obj is cbor2.break_marker or obj is _py_break_marker:
-            raise cbor2.CBORDecodeError("Unexpected break marker")
 
         self._buffer = self._buffer[stream.tell() :]
         return obj

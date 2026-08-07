@@ -117,6 +117,12 @@ async def test_rpc_call_timeout():
     pipe_client, pipe_server = EventPipe.create_inmemory_pair()
     client = create_client(pipe_client)
     client.set_timeout(100)  # 100ms timeout
+    received_msgs = []
+
+    async def capture_server_msgs(data):
+        received_msgs.append(data)
+
+    pipe_server.on("data", capture_server_msgs)
 
     # Create call that server never answers (but we write it to keep pipe alive)
     handle = client.create_call("slow_method")
@@ -126,6 +132,12 @@ async def test_rpc_call_timeout():
         await handle.result()
 
     assert "Timeout" in str(excinfo.value)
+    await asyncio.sleep(0.05)
+    cancel_msg = next(
+        (m for m in received_msgs if isinstance(m, list) and len(m) >= 3 and m[0] == 1 and m[1] == 3),
+        None,
+    )
+    assert cancel_msg is not None
 
     await pipe_client.terminate()
     await pipe_server.terminate()
@@ -172,3 +184,20 @@ async def test_rpc_call_awaitable():
 
     await pipe_client.terminate()
     await pipe_server.terminate()
+
+
+@pytest.mark.asyncio
+async def test_rpc_call_rejected_when_transport_closes():
+    pipe_client, pipe_server = EventPipe.create_inmemory_pair()
+    client = create_client(pipe_client)
+
+    handle = client.create_call("slow_method").call()
+    await asyncio.sleep(0.01)
+    await pipe_server.terminate("server-stopped")
+
+    with pytest.raises(Exception) as exc_info:
+        await handle.result()
+
+    payload = exc_info.value.args[0]
+    assert payload["transportClosed"] is True
+    assert "server-stopped" in payload["message"]

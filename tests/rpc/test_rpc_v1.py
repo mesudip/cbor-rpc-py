@@ -149,6 +149,20 @@ async def test_wait_next_event_already_waiting(event_rpc):
 
 
 @pytest.mark.asyncio
+async def test_wait_next_event_rejected_when_transport_closes(event_rpc, pipe):
+    waiter = asyncio.create_task(event_rpc.wait_next_event("test_topic", 1000))
+    await asyncio.sleep(0.01)
+    await pipe.terminate("test-close")
+
+    with pytest.raises(Exception) as exc_info:
+        await waiter
+
+    payload = exc_info.value.args[0]
+    assert payload["transportClosed"] is True
+    assert "test-close" in payload["message"]
+
+
+@pytest.mark.asyncio
 async def test_invalid_message_format(rpc, pipe):
     await pipe.write([1])
     await asyncio.sleep(0.1)

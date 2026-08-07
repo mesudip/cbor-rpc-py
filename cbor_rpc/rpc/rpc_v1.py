@@ -26,6 +26,7 @@ class RpcV1(RpcInitClient):
         self._timeout = 30000
         self._waiters: Dict[str, TimedPromise] = {}
         self._peer_log_level = 5  # Default to Debug for Godlike logging
+        self._transport_closed = False
 
         # Initialize Logger
         # For outgoing logs (Server -> Client), ID should reference the REQUEST ID if currently handling one?
@@ -35,6 +36,34 @@ class RpcV1(RpcInitClient):
         # Lambda 0 is placeholder. Ideally context contextvars would be used to get current request ID.
 
         self.pipe.pipeline("data", self._on_data)
+        self.pipe.on("close", self._on_pipe_close)
+        self.pipe.on("error", self._on_pipe_error)
+
+    async def _reject_pending_with_error(self, error: Any) -> None:
+        active_handles = list(self._active_calls.values())
+        self._active_calls.clear()
+        for handle in active_handles:
+            promise = getattr(handle, "_promise", None)
+            if promise:
+                await promise.reject(error)
+
+        waiters = list(self._waiters.values())
+        self._waiters.clear()
+        for waiter in waiters:
+            await waiter.reject(error)
+
+    async def _on_pipe_close(self, *args: Any) -> None:
+        if self._transport_closed:
+            return
+        self._transport_closed = True
+        reason = str(args[0]) if args else "transport closed"
+        await self._reject_pending_with_error({"transportClosed": True, "message": f"RPC transport closed: {reason}"})
+
+    async def _on_pipe_error(self, error: Exception) -> None:
+        if self._transport_closed:
+            return
+        self._transport_closed = True
+        await self._reject_pending_with_error({"transportClosed": True, "message": f"RPC transport error: {error}"})
 
     async def _resolve_result(self, result: Any) -> Any:
         """Recursively resolve coroutines or nested coroutines."""
@@ -184,7 +213,17 @@ class RpcV1(RpcInitClient):
 
         def start_callback(handle: RpcCallHandle) -> TimedPromise:
             def timeout_callback():
-                self._active_calls.pop(counter, None)
+                # On timeout, actively propagate cancellation to the remote side
+                # before removing local tracking state.
+                async def _cancel_on_timeout() -> None:
+                    try:
+                        await self.pipe.write([1, 3, counter])
+                    except Exception:
+                        pass
+                    finally:
+                        self._active_calls.pop(counter, None)
+
+                asyncio.create_task(_cancel_on_timeout())
 
             # Use the timeout from the handle, as it might have been modified
             promise = TimedPromise(handle._timeout, timeout_callback)
